@@ -77,15 +77,18 @@ ALTER TABLE staff ENABLE ROW LEVEL SECURITY;
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 
 -- 🔥 Function: Create User Profile & Company on Registration
-CREATE or replace FUNCTION handle_user_signup()
-RETURNS TRIGGER AS $$
-DECLARE new_company_id UUID;
-DECLARE new_clinic_id UUID;
+CREATE OR REPLACE FUNCTION public.handle_user_signup()
+RETURNS TRIGGER
+SECURITY DEFINER
+AS $$
+DECLARE
+    new_company_id UUID;
+    new_clinic_id UUID;
 BEGIN
     -- Create a new company using the user's provided company name
-    INSERT INTO companies (id, owner_id, name, created_at)
+    INSERT INTO public.companies (id, owner_id, name, created_at)
     VALUES (
-        uuid_generate_v4(), 
+        gen_random_uuid(), 
         NEW.id, 
         NEW.raw_user_meta_data->>'company_name', 
         NOW()
@@ -93,17 +96,17 @@ BEGIN
     RETURNING id INTO new_company_id;
 
     -- Create a default clinic for the company
-    INSERT INTO clinics (id, company_id, name, created_at)
+    INSERT INTO public.clinics (id, company_id, name, created_at)
     VALUES (
-        uuid_generate_v4(), 
+        gen_random_uuid(), 
         new_company_id, 
-        'Main Clinic', 
+         NEW.raw_user_meta_data->>'company_name', 
         NOW()
     )
     RETURNING id INTO new_clinic_id;
 
     -- Create a user profile linked to auth.users
-    INSERT INTO user_profiles (id, first_name, last_name, phone, role, company_id, created_at)
+    INSERT INTO public.user_profiles (id, first_name, last_name, phone, role, company_id, created_at)
     VALUES (
         NEW.id, 
         NEW.raw_user_meta_data->>'first_name', 
@@ -114,12 +117,11 @@ BEGIN
         NOW()
     );
 
-    -- Add owner to the staff table
-    INSERT INTO staff (id, user_id, company_id, clinic_id, role, created_at)
+    -- Add owner to the staff table. Note: using user_profile_id instead of user_id.
+    INSERT INTO public.staff (id, user_id, clinic_id, role, created_at)
     VALUES (
-        uuid_generate_v4(), 
+        gen_random_uuid(), 
         NEW.id, 
-        new_company_id, 
         new_clinic_id, 
         'owner', 
         NOW()
@@ -128,6 +130,8 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+
 
 -- 🔥 Trigger: Execute Function When a New User Registers
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
@@ -197,3 +201,6 @@ USING (
         WHERE role IN ('owner', 'manager')
     )
 );
+
+
+SHOW search_path;
