@@ -31,7 +31,7 @@ const BackgroundImage = () => {
         placeholder="blur"
         blurDataURL="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAJABADASIAAhEBAxEB/8QAFgABAQEAAAAAAAAAAAAAAAAABgcI/8QAIxAAAQMDBAMBAAAAAAAAAAAAAQIDBQAEBgcREiExQVFhcf/EABUBAQEAAAAAAAAAAAAAAAAAAAUG/8QAHBEAAQQDAQAAAAAAAAAAAAAAAQACAxEEBRIh/9oADAMBAAIRAxEAPwCVZNqHHMVtLrILy5ZZbSVLcUwQEgdknb1XzXqLrRnGpWQOXGU5HdXqnDuKWVBDafxKQAB+VZOtmXXOQ6o3jNq6pFtbIFvxJ7KiSVH+kn9qPNLcRYwvGGLdKEuPrAcecA7Uo9D8HQ/a5/Ixn5MxYOgA9JVIxmRjTcjnXJP/2Q=="
         style={{ objectFit: 'cover' }}
-        className="brightness-[0.5] filter"
+        className="brightness-[0.4] filter"
       />
       <div className="absolute inset-0 bg-[#305893] bg-opacity-40 flex flex-col items-start justify-center p-12">
         <h2 className="text-[42px] leading-tight font-bold text-white opacity-90">Welcome<br/>to<br/>Facecloud</h2>

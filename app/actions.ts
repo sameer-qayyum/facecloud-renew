@@ -32,7 +32,7 @@ export const signUpAction = async (formData: FormData) => {
       data: {
         first_name: firstName,
         last_name: lastName,
-        mobile_number: mobileNumber,
+        phone: mobileNumber,
         company_name: companyName,
       }
     },
