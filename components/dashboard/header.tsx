@@ -5,12 +5,26 @@ import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, Menu } from 'lucide-react';
+import { Search, Menu, Plus } from 'lucide-react';
 import { UserProfile } from '@/lib/types/user-profiles';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useSidebar } from './sidebar/sidebar-context';
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import { 
+  Sheet, 
+  SheetContent, 
+  SheetHeader, 
+  SheetTitle, 
+  SheetTrigger, 
+  SheetClose 
+} from '@/components/ui/sheet';
 
 interface DashboardHeaderProps {
   user?: UserProfile;
@@ -100,6 +114,80 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
         </div>
         
         <div className="flex items-center space-x-4">
+          {/* Mobile Quick Actions */}
+          <div className="flex md:hidden items-center gap-2">
+            {/* Mobile Search */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-10 w-10">
+                  <Search className="h-5 w-5" />
+                  <span className="sr-only">Search</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="top" className="p-0">
+                <SheetHeader className="p-4 border-b">
+                  <SheetTitle>Search</SheetTitle>
+                </SheetHeader>
+                <div className="p-4">
+                  <div className="relative">
+                    <Input
+                      type="text"
+                      placeholder="Search anything..."
+                      className="pl-10 w-full"
+                      autoFocus
+                    />
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                  </div>
+                  <div className="mt-4 flex justify-end">
+                    <SheetClose asChild>
+                      <Button variant="outline" size="sm">Close</Button>
+                    </SheetClose>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+            
+            {/* Quick Actions Button */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button 
+                  size="icon" 
+                  className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90"
+                >
+                  <Plus className="h-5 w-5 text-white" />
+                  <span className="sr-only">Quick Actions</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuItem asChild>
+                  <Link href="/appointments/new" className="cursor-pointer">
+                    Add Appointment
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/patients/new" className="cursor-pointer">
+                    Add Patient
+                  </Link>
+                </DropdownMenuItem>
+                {(user?.role === 'owner' || user?.role === 'manager') && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/clinics/new" className="cursor-pointer">
+                      Add Clinic
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+                {(user?.role === 'owner' || user?.role === 'manager' || user?.role === 'admin') && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/inventory/new" className="cursor-pointer">
+                      Add Inventory Item
+                    </Link>
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          
+          {/* Desktop Search */}
           <div className="relative hidden md:block">
             <Input
               type="text"
