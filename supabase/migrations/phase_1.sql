@@ -182,13 +182,14 @@ USING (
     )
 );
 
--- 🔥 Owners & Managers can manage staff
+-- 🔧 FIXED: Break circular reference by using user_profiles instead
 CREATE POLICY "Owners & Managers can manage staff"
 ON staff FOR ALL
 USING (
     auth.uid() IN (
-        SELECT user_id FROM staff 
-        WHERE role IN ('owner', 'manager')
+        SELECT id FROM user_profiles 
+        WHERE company_id = staff.company_id
+        AND role IN ('owner', 'manager')
     )
 );
 
@@ -203,4 +204,3 @@ USING (
 );
 
 
-SHOW search_path;

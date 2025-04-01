@@ -3,12 +3,26 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type TimeFrame = 'day' | 'week' | 'month' | 'year';
 
+export interface ClinicLocation {
+  id: string;
+  name: string;
+  address: string;
+  phone?: string;
+  email?: string;
+}
+
 export interface ClinicMetrics {
   revenue: number;
   revenueChange: number;
   bookingCount: number;
   bookingCountChange: number;
   lastUpdated: string;
+  // Add clinic data from API
+  clinic?: {
+    id: string;
+    name: string;
+    location?: ClinicLocation | null;
+  };
 }
 
 interface ClinicStore {

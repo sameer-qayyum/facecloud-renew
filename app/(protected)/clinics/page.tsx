@@ -1,10 +1,8 @@
 import { Suspense } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Building2 } from 'lucide-react';
 import ClinicsPageContent from './components/clinics-page-content';
 import ClinicsSkeleton from './components/clinics-skeleton';
-import { ClinicFilters } from './components/clinic-filters';
 
 export const dynamic = 'force-dynamic';
 export const fetchCache = 'force-no-store';
