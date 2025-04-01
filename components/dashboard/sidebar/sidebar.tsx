@@ -1,37 +1,31 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { SidebarNav } from './sidebar-nav';
 import { mainNavItems, secondaryNavItems } from '@/lib/constants/navigation';
 import { UserProfile } from '@/lib/types/user-profiles';
-import { PanelLeft, PanelLeftClose, Menu } from 'lucide-react';
+import { PanelLeft, PanelLeftClose } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
+import { useSidebar } from './sidebar-context';
 
 interface SidebarProps {
   user?: UserProfile;
-  defaultCollapsed?: boolean;
 }
 
-export function Sidebar({ user, defaultCollapsed = false }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
+export function Sidebar({ user }: SidebarProps) {
+  const { isOpen, setIsOpen, isCollapsed, setIsCollapsed } = useSidebar();
   const [isMobile, setIsMobile] = useState(false);
-  const pathname = usePathname();
 
   // Handle resize events to determine if we're on mobile
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
-      // On mobile, ensure sidebar is not collapsed
-      if (window.innerWidth < 768) {
-        setIsCollapsed(false);
-      }
     };
 
     // Initialize
@@ -43,11 +37,6 @@ export function Sidebar({ user, defaultCollapsed = false }: SidebarProps) {
     // Clean up
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-
-  // Reset mobile sheet open state when navigating
-  useEffect(() => {
-    // Intentionally left empty as we just want to track pathname changes
-  }, [pathname]);
 
   // Create initials for avatar
   const getInitials = () => {
@@ -164,14 +153,11 @@ export function Sidebar({ user, defaultCollapsed = false }: SidebarProps) {
 
   // Mobile sidebar (sheet/drawer)
   const MobileSidebar = (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden">
-          <Menu className="h-5 w-5" />
-          <span className="sr-only">Toggle menu</span>
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="left" className="w-[300px] p-0">
+    <Sheet open={isOpen} onOpenChange={setIsOpen}>
+      <SheetContent 
+        side="left" 
+        className="w-[300px] p-0 border-r shadow-lg transition-transform duration-300 ease-in-out"
+      >
         <div className="flex h-full flex-col">
           {/* Header with branding */}
           <div className="flex h-16 items-center border-b px-6">

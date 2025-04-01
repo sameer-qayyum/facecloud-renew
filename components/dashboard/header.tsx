@@ -5,10 +5,12 @@ import Image from 'next/image';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Search, ChevronRight } from 'lucide-react';
+import { Search, Menu } from 'lucide-react';
 import { UserProfile } from '@/lib/types/user-profiles';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { useSidebar } from './sidebar/sidebar-context';
 
 interface DashboardHeaderProps {
   user?: UserProfile;
@@ -16,31 +18,28 @@ interface DashboardHeaderProps {
 
 export function DashboardHeader({ user }: DashboardHeaderProps) {
   const pathname = usePathname();
+  const { toggleMobileMenu } = useSidebar();
   
-  // Function to get breadcrumb segments from the path
-  const getBreadcrumbs = () => {
-    if (!pathname) return [{ label: 'Dashboard', href: '/dashboard' }];
+  // Function to get page title and href from the path
+  const getPageInfo = () => {
+    if (!pathname) return { title: 'Dashboard', href: '/dashboard' };
     
-    // Split the path and create breadcrumbs
+    // Split the path and get the last segment
     const segments = pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1];
     
-    // Build breadcrumbs with href for each level
-    return segments.map((segment, index) => {
-      // Build the href for this segment
-      const href = `/${segments.slice(0, index + 1).join('/')}`;
+    if (!lastSegment) return { title: 'Dashboard', href: '/dashboard' };
+    
+    // Format the title (capitalize first letter, replace hyphens with spaces)
+    const title = lastSegment
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
       
-      // Format the label (capitalize first letter, replace hyphens with spaces)
-      const label = segment
-        .split('-')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-        
-      return { label, href };
-    });
+    return { title, href: pathname };
   };
 
-  const breadcrumbs = getBreadcrumbs();
-  const pageTitle = breadcrumbs[breadcrumbs.length - 1]?.label || 'Dashboard';
+  const { title, href } = getPageInfo();
 
   // Create initials from user name if available
   const getInitials = () => {
@@ -65,41 +64,39 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
   return (
     <header className="w-full py-3 px-6 flex flex-col bg-[#f8f8f8] border-b border-gray-100">
       <div className="flex items-center justify-between">
-        <div className="flex flex-col space-y-1">
-          <div className="flex items-center gap-2 md:hidden">
-            <Image 
-              src="/images/common/brand/svg/Facecloud-Mark-RGB.svg"
-              alt="FaceCloud"
-              width={24}
-              height={24}
-              priority
-            />
-            <h1 className="text-xl font-semibold text-gray-900">{pageTitle}</h1>
+        <div className="flex items-center gap-3">
+          {/* Mobile menu trigger */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            className="md:hidden mr-3 h-11 w-11 touch-manipulation"
+            onClick={toggleMobileMenu}
+          >
+            <Menu className="h-8 w-8" />
+            <span className="sr-only">Toggle menu</span>
+          </Button>
+          
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 md:hidden">
+              <Image 
+                src="/images/common/brand/svg/Facecloud-Mark-RGB.svg"
+                alt="FaceCloud"
+                width={24}
+                height={24}
+                priority
+              />
+              <Link href={href} className="text-xl font-semibold text-gray-900 hover:text-primary transition-colors">
+                {title}
+              </Link>
+            </div>
+            
+            <Link 
+              href={href}
+              className="text-2xl font-semibold text-gray-900 hover:text-primary transition-colors hidden md:block"
+            >
+              {title}
+            </Link>
           </div>
-          
-          <h1 className="text-2xl font-semibold text-gray-900 hidden md:block">{pageTitle}</h1>
-          
-          {/* Breadcrumbs navigation */}
-          <nav className="flex" aria-label="Breadcrumb">
-            <ol className="flex items-center space-x-1">
-              {breadcrumbs.map((crumb, i) => (
-                <li key={crumb.href} className="flex items-center">
-                  {i > 0 && <ChevronRight className="h-3 w-3 text-gray-400 mx-1" />}
-                  <Link 
-                    href={crumb.href} 
-                    className={cn(
-                      "text-xs hover:text-primary transition-colors",
-                      i === breadcrumbs.length - 1 
-                        ? "font-medium text-primary" 
-                        : "text-gray-500"
-                    )}
-                  >
-                    {crumb.label}
-                  </Link>
-                </li>
-              ))}
-            </ol>
-          </nav>
         </div>
         
         <div className="flex items-center space-x-4">

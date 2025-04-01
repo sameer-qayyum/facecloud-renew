@@ -3,6 +3,7 @@
 import { DashboardHeader } from '@/components/dashboard/header';
 import { DashboardFooter } from '@/components/dashboard/footer';
 import { Sidebar } from '@/components/dashboard/sidebar/sidebar';
+import { SidebarProvider } from '@/components/dashboard/sidebar/sidebar-context';
 import { useEffect, useState, Suspense } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { UserProfile } from '@/lib/types/user-profiles';
@@ -58,21 +59,23 @@ export default function DashboardLayout({
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <div className="flex h-screen overflow-hidden bg-background">
-        {/* Sidebar */}
-        <Suspense fallback={<div className="w-[70px] md:w-[240px] border-r bg-sidebar-background" />}>
-          <Sidebar user={user || undefined} />
-        </Suspense>
+      <SidebarProvider>
+        <div className="flex h-screen overflow-hidden bg-background">
+          {/* Sidebar */}
+          <Suspense fallback={<div className="w-[70px] md:w-[240px] border-r bg-sidebar-background" />}>
+            <Sidebar user={user || undefined} />
+          </Suspense>
 
-        {/* Main content */}
-        <div className="flex flex-col flex-1 h-screen overflow-hidden">
-          <DashboardHeader user={user || undefined} />
-          <main className="flex-1 overflow-y-auto p-6">
-            {children}
-          </main>
-          <DashboardFooter />
+          {/* Main content */}
+          <div className="flex flex-col flex-1 h-screen overflow-hidden">
+            <DashboardHeader user={user || undefined} />
+            <main className="flex-1 overflow-y-auto p-6">
+              {children}
+            </main>
+            <DashboardFooter />
+          </div>
         </div>
-      </div>
+      </SidebarProvider>
     </ThemeProvider>
   );
 }
