@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger, SheetTitle } from '@/components/ui/sheet';
 import { SidebarNav } from './sidebar-nav';
 import { mainNavItems, secondaryNavItems } from '@/lib/constants/navigation';
 import { UserProfile } from '@/lib/types/user-profiles';
@@ -185,6 +185,8 @@ export function Sidebar({ user, defaultCollapsed = false }: SidebarProps) {
                 priority
               />
               <span className="font-bold text-xl text-primary tracking-tight">FaceCloud</span>
+              {/* Hidden title for accessibility */}
+              <SheetTitle className="sr-only">FaceCloud Navigation</SheetTitle>
             </div>
           </div>
           
