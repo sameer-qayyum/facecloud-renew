@@ -25,13 +25,22 @@ interface ContactInfo {
   phone: string;
 }
 
+// Define location form data interface with correct state enum
+interface LocationFormData {
+  suburb?: string;
+  address?: string;
+  state?: 'NSW' | 'VIC' | 'QLD' | 'SA' | 'WA' | 'TAS' | 'ACT' | 'NT';
+  postcode?: string;
+  country?: string;
+}
+
 // Define the form data interface
 interface ClinicFormData {
   clinic: {
     name: string;
     logo?: File;
   };
-  location: Partial<Location>;
+  location: LocationFormData;
   contact: ContactInfo;
   operatingHours: OperatingHours;
 }
@@ -42,7 +51,7 @@ interface ClinicSubmissionData {
     name: string;
     logoBase64?: string;
   };
-  location: Partial<Location> & { email: string; phone: string }; // This includes contact info
+  location: LocationFormData & { email: string; phone: string }; // This includes contact info
   operatingHours: OperatingHours;
 }
 
@@ -52,19 +61,21 @@ const STEPS = ['basic', 'location', 'contact', 'hours', 'review'];
 export function NewClinicForm() {
   const router = useRouter();
   const { toast } = useToast();
-  const [currentStep, setCurrentStep] = useState(0);
-  const [saving, setSaving] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [currentStep, setCurrentStep] = useState<string>(STEPS[0]);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  
+  // Initialize form data
   const [formData, setFormData] = useState<ClinicFormData>({
     clinic: {
       name: '',
     },
     location: {
-      country: 'Australia',
       suburb: '',
       address: '',
       state: undefined,
       postcode: '',
+      country: 'Australia',
     },
     contact: {
       email: '',
@@ -78,314 +89,290 @@ export function NewClinicForm() {
       friday: { isOpen: true, openTime: '09:00', closeTime: '17:00' },
       saturday: { isOpen: false },
       sunday: { isOpen: false },
-    },
+    }
   });
-
+  
   // Update clinic data
-  const updateClinicData = (data: { name: string; logo?: File }) => {
+  const updateClinicData = (data: Partial<Clinic>) => {
     setFormData(prev => ({
       ...prev,
       clinic: {
         ...prev.clinic,
         ...data,
-      },
+      }
     }));
   };
-
+  
   // Update location data
-  const updateLocationData = (data: Partial<Location>) => {
+  const updateLocationData = (data: LocationFormData) => {
     setFormData(prev => ({
       ...prev,
       location: {
         ...prev.location,
         ...data,
-      },
+      }
     }));
   };
-
+  
   // Update contact data
-  const updateContactData = (data: Partial<ContactInfo>) => {
+  const updateContactData = (data: ContactInfo) => {
     setFormData(prev => ({
       ...prev,
       contact: {
         ...prev.contact,
         ...data,
-      },
+      }
     }));
   };
-
+  
   // Update operating hours data
-  const updateOperatingHours = (data: OperatingHours) => {
+  const updateOperatingHoursData = (data: OperatingHours) => {
     setFormData(prev => ({
       ...prev,
       operatingHours: data,
     }));
   };
-
-  // Validate current step
-  const validateCurrentStep = (): boolean => {
-    switch (currentStep) {
-      case 0: // Basic Info
-        return !!formData.clinic.name;
-      case 1: // Location
-        return !!(
-          formData.location.suburb && 
-          formData.location.address && 
-          formData.location.state && 
-          formData.location.postcode
-        );
-      case 2: // Contact
-        return !!(formData.contact.email && formData.contact.phone);
-      case 3: // Operating Hours
-        return Object.values(formData.operatingHours).some(day => 
-          day.isOpen && day.openTime && day.closeTime
-        );
-      default:
-        return true;
+  
+  // Navigate to the next step
+  const nextStep = () => {
+    const currentIndex = STEPS.indexOf(currentStep);
+    if (currentIndex < STEPS.length - 1) {
+      setCurrentStep(STEPS[currentIndex + 1]);
     }
   };
-
-  // Handle next step navigation
-  const handleNext = () => {
-    if (!validateCurrentStep()) {
-      toast({
-        title: "Required fields missing",
-        description: "Please fill in all required fields before proceeding.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (currentStep < STEPS.length - 1) {
-      setCurrentStep(currentStep + 1);
+  
+  // Navigate to the previous step
+  const prevStep = () => {
+    const currentIndex = STEPS.indexOf(currentStep);
+    if (currentIndex > 0) {
+      setCurrentStep(STEPS[currentIndex - 1]);
     }
   };
-
-  // Handle previous step navigation
-  const handlePrevious = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
+  
+  // Go directly to a step
+  const goToStep = (step: string) => {
+    if (STEPS.includes(step)) {
+      setCurrentStep(step);
     }
   };
-
-  // Convert file to base64
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  
+  // Check if we're on the first step
+  const isFirstStep = () => {
+    return currentStep === STEPS[0];
+  };
+  
+  // Check if we're on the last step
+  const isLastStep = () => {
+    return currentStep === STEPS[STEPS.length - 1];
   };
 
-  // Save draft
-  const handleSaveDraft = async () => {
+  // Save the form data as a draft
+  const saveDraft = async () => {
+    setIsSaving(true);
+
     try {
-      setSaving(true);
-      const dataToSubmit = await prepareDataForSubmission();
-      const result = await saveClinicDraft(dataToSubmit);
+      // In a real app, you would do something with the draft data here
+      // For now, we'll just simulate a successful save
+      await saveClinicDraft({
+        clinic: {
+          name: formData.clinic.name,
+        },
+        location: {
+          ...formData.location,
+          ...formData.contact
+        },
+        operatingHours: formData.operatingHours,
+      });
+      
       toast({
         title: "Draft saved",
-        description: "Your clinic draft has been saved. You can continue editing later.",
+        description: "Your clinic draft has been saved successfully."
       });
     } catch (error) {
+      console.error('Error saving draft:', error);
       toast({
-        title: "Failed to save draft",
-        description: "There was an error saving your draft. Please try again.",
+        title: "Error saving draft",
+        description: "There was a problem saving your draft. Please try again.",
         variant: "destructive",
       });
     } finally {
-      setSaving(false);
+      setIsSaving(false);
     }
   };
-
-  // Prepare data for submission
-  const prepareDataForSubmission = async (): Promise<ClinicSubmissionData> => {
-    // Merge contact info into location
-    const locationWithContact = {
-      ...formData.location,
-      email: formData.contact.email,
-      phone: formData.contact.phone,
-    };
-
-    // Convert logo to base64 if it exists
-    let logoBase64: string | undefined = undefined;
-    if (formData.clinic.logo) {
-      logoBase64 = await fileToBase64(formData.clinic.logo);
-    }
-
-    return {
-      clinic: {
-        name: formData.clinic.name,
-        logoBase64,
-      },
-      location: locationWithContact,
-      operatingHours: formData.operatingHours,
-    };
-  };
-
-  // Check if all required fields are filled
-  const canSubmit = (): boolean => {
-    return !!(
-      formData.clinic.name &&
-      formData.location.suburb &&
-      formData.location.address &&
-      formData.location.state &&
-      formData.location.postcode &&
-      formData.contact.email &&
-      formData.contact.phone &&
-      Object.values(formData.operatingHours).some(day => 
-        day.isOpen && day.openTime && day.closeTime
-      )
-    );
-  };
-
-  // Submit form
+  
+  // Handle form submission
   const handleSubmit = async () => {
-    if (!canSubmit()) {
-      toast({
-        title: "Required fields missing",
-        description: "Please fill in all required fields before creating the clinic.",
-        variant: "destructive",
-      });
-      return;
-    }
-
+    setIsSubmitting(true);
+    
     try {
-      setSubmitting(true);
-      const dataToSubmit = await prepareDataForSubmission();
-      const result = await createClinic(dataToSubmit);
-      toast({
-        title: "Clinic created",
-        description: "Your new clinic has been successfully created.",
-      });
-      router.push(`/clinics/${result.clinicId}`);
+      // Convert logo to base64 if present (for API submission)
+      let logoBase64: string | undefined = undefined;
+      
+      if (formData.clinic.logo && formData.clinic.logo.size > 0) {
+        const reader = new FileReader();
+        logoBase64 = await new Promise((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(formData.clinic.logo as File);
+        });
+      }
+      
+      // Prepare submission data
+      const submissionData: ClinicSubmissionData = {
+        clinic: {
+          name: formData.clinic.name,
+          logoBase64,
+        },
+        location: {
+          ...formData.location,
+          ...formData.contact
+        },
+        operatingHours: formData.operatingHours,
+      };
+      
+      // Submit the data
+      const result = await createClinic(submissionData);
+      
+      if (result.success) {
+        toast({
+          title: "Clinic created",
+          description: "Your clinic has been created successfully."
+        });
+        
+        // Redirect to the clinics page
+        router.push('/clinics');
+        router.refresh();
+      } else {
+        throw new Error('Failed to create clinic');
+      }
     } catch (error) {
+      console.error('Error creating clinic:', error);
       toast({
-        title: "Failed to create clinic",
-        description: "There was an error creating your clinic. Please try again.",
+        title: "Error creating clinic",
+        description: "There was a problem creating your clinic. Please try again.",
         variant: "destructive",
       });
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
-
+  
   return (
-    <Card className="border shadow-sm">
-      <Tabs 
-        value={STEPS[currentStep]} 
-        className="w-full"
-        onValueChange={(value) => {
-          const index = STEPS.indexOf(value);
-          if (index >= 0) {
-            setCurrentStep(index);
-          }
-        }}
-      >
-        <TabsList className="w-full grid grid-cols-5 px-2 py-1">
-          <TabsTrigger value="basic" className="text-xs sm:text-sm py-1.5">Basic</TabsTrigger>
-          <TabsTrigger value="location" className="text-xs sm:text-sm py-1.5">Location</TabsTrigger>
-          <TabsTrigger value="contact" className="text-xs sm:text-sm py-1.5">Contact</TabsTrigger>
-          <TabsTrigger value="hours" className="text-xs sm:text-sm py-1.5">Hours</TabsTrigger>
-          <TabsTrigger value="review" className="text-xs sm:text-sm py-1.5">Review</TabsTrigger>
-        </TabsList>
-        
-        <CardContent className="p-3 sm:p-4">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-            >
-              <TabsContent value="basic" className="mt-0">
-                <BasicInfoStep 
-                  data={formData.clinic} 
-                  onChange={updateClinicData} 
-                />
-              </TabsContent>
+    <div className="max-w-3xl mx-auto">
+      <Card className="shadow-sm">
+        <Tabs value={currentStep} onValueChange={setCurrentStep}>
+          <TabsList className="grid grid-cols-5 bg-muted/50 p-1">
+            <TabsTrigger value="basic" className="text-xs sm:text-sm py-1.5">Basic</TabsTrigger>
+            <TabsTrigger value="location" className="text-xs sm:text-sm py-1.5">Location</TabsTrigger>
+            <TabsTrigger value="contact" className="text-xs sm:text-sm py-1.5">Contact</TabsTrigger>
+            <TabsTrigger value="hours" className="text-xs sm:text-sm py-1.5">Hours</TabsTrigger>
+            <TabsTrigger value="review" className="text-xs sm:text-sm py-1.5">Review</TabsTrigger>
+          </TabsList>
+          
+          <CardContent className="p-3 sm:p-4">
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentStep}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+              >
+                <TabsContent value="basic" className="mt-0">
+                  <BasicInfoStep 
+                    data={formData.clinic} 
+                    onChange={updateClinicData} 
+                  />
+                </TabsContent>
 
-              <TabsContent value="location" className="mt-0">
-                <LocationInfoStep 
-                  data={formData.location} 
-                  onChange={updateLocationData} 
-                />
-              </TabsContent>
+                <TabsContent value="location" className="mt-0">
+                  <LocationInfoStep 
+                    data={formData.location} 
+                    onChange={updateLocationData} 
+                  />
+                </TabsContent>
 
-              <TabsContent value="contact" className="mt-0">
-                <ContactInfoStep 
-                  data={formData.contact} 
-                  onChange={updateContactData} 
-                />
-              </TabsContent>
+                <TabsContent value="contact" className="mt-0">
+                  <ContactInfoStep 
+                    data={formData.contact} 
+                    onChange={updateContactData} 
+                  />
+                </TabsContent>
 
-              <TabsContent value="hours" className="mt-0">
-                <OperatingHoursStep 
-                  data={formData.operatingHours} 
-                  onChange={updateOperatingHours} 
-                />
-              </TabsContent>
+                <TabsContent value="hours" className="mt-0">
+                  <OperatingHoursStep 
+                    data={formData.operatingHours} 
+                    onChange={updateOperatingHoursData} 
+                  />
+                </TabsContent>
 
-              <TabsContent value="review" className="mt-0">
-                <ReviewStep 
-                  data={formData} 
-                />
-              </TabsContent>
-            </motion.div>
-          </AnimatePresence>
-
-          <div className="flex justify-between mt-4 pt-3 border-t">
-            <div>
-              {currentStep > 0 && (
+                <TabsContent value="review" className="mt-0">
+                  <ReviewStep data={formData} />
+                </TabsContent>
+              </motion.div>
+            </AnimatePresence>
+          </CardContent>
+          
+          <div className="p-3 sm:p-4 border-t flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
+            <div className="w-full sm:w-auto flex gap-2">
+              {!isFirstStep() && (
                 <Button
                   variant="outline"
-                  onClick={handlePrevious}
-                  disabled={saving || submitting}
                   size="sm"
-                  className="h-9"
+                  onClick={prevStep}
+                  disabled={isSubmitting || isSaving}
+                  className="flex-1 sm:flex-auto"
                 >
                   Previous
                 </Button>
               )}
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={saveDraft}
+                disabled={isSubmitting || isSaving}
+                className="flex-1 sm:flex-auto"
+              >
+                {isSaving ? (
+                  <>
+                    <LoadingSpinner className="mr-2 h-4 w-4" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Draft'
+                )}
+              </Button>
             </div>
             
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                onClick={handleSaveDraft}
-                disabled={saving || submitting}
-                size="sm"
-                className="h-9"
-              >
-                {saving ? <LoadingSpinner className="mr-1" size="sm" /> : null}
-                Save Draft
-              </Button>
-              
-              {currentStep < STEPS.length - 1 ? (
-                <Button 
-                  onClick={handleNext} 
-                  disabled={saving || submitting}
+            <div className="w-full sm:w-auto">
+              {isLastStep() ? (
+                <Button
                   size="sm"
-                  className="h-9"
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || isSaving}
+                  className="w-full"
                 >
-                  Next
+                  {isSubmitting ? (
+                    <>
+                      <LoadingSpinner className="mr-2 h-4 w-4" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Clinic'
+                  )}
                 </Button>
               ) : (
-                <Button 
-                  onClick={handleSubmit} 
-                  disabled={submitting || !canSubmit()}
-                  className="gap-1 h-9"
+                <Button
                   size="sm"
+                  onClick={nextStep}
+                  className="w-full"
                 >
-                  {submitting ? <LoadingSpinner size="sm" /> : null}
-                  Create Clinic
+                  Next
                 </Button>
               )}
             </div>
           </div>
-        </CardContent>
-      </Tabs>
-    </Card>
+        </Tabs>
+      </Card>
+    </div>
   );
 }

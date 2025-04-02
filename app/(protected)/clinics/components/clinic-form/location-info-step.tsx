@@ -33,6 +33,8 @@ const STATES = [
   { value: 'NT', label: 'Northern Territory' },
 ] as const;
 
+type StateType = (typeof STATES)[number]['value'];
+
 // Define the validation schema
 const locationInfoSchema = z.object({
   suburb: z.string().min(1, "Suburb is required"),
@@ -53,7 +55,7 @@ interface LocationInfoStepProps {
   data: {
     suburb?: string;
     address?: string;
-    state?: 'NSW' | 'VIC' | 'QLD' | 'SA' | 'WA' | 'TAS' | 'ACT' | 'NT';
+    state?: StateType;
     postcode?: string;
     country?: string;
   };
@@ -62,12 +64,12 @@ interface LocationInfoStepProps {
 
 export function LocationInfoStep({ data, onChange }: LocationInfoStepProps) {
   // Create form with initial values
-  const form = useForm<LocationInfoFormValues>({
+  const form = useForm({
     resolver: zodResolver(locationInfoSchema),
     defaultValues: {
       suburb: data.suburb || '',
       address: data.address || '',
-      state: data.state || undefined,
+      state: (data.state || 'NSW') as StateType,
       postcode: data.postcode || '',
       country: data.country || 'Australia',
     },
@@ -78,7 +80,7 @@ export function LocationInfoStep({ data, onChange }: LocationInfoStepProps) {
   useEffect(() => {
     const subscription = form.watch((values) => {
       if (values.suburb && values.address && values.state && values.postcode) {
-        onChange(values as LocationInfoFormValues);
+        onChange(form.getValues() as LocationInfoFormValues);
       }
     });
     
@@ -87,11 +89,8 @@ export function LocationInfoStep({ data, onChange }: LocationInfoStepProps) {
   
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="text-base sm:text-lg font-medium">Location Information</h3>
-        <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
-          Enter the physical location details for this clinic.
-        </p>
+      <div className="text-sm text-muted-foreground">
+        Enter the location information for this clinic.
       </div>
       
       <Form {...form}>
@@ -101,15 +100,11 @@ export function LocationInfoStep({ data, onChange }: LocationInfoStepProps) {
             name="address"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-sm">Street Address*</FormLabel>
+                <FormLabel>Street Address</FormLabel>
                 <FormControl>
-                  <Input 
-                    placeholder="Enter street address" 
-                    {...field} 
-                    className="w-full"
-                  />
+                  <Input placeholder="123 Main Street" {...field} />
                 </FormControl>
-                <FormMessage className="text-xs" />
+                <FormMessage />
               </FormItem>
             )}
           />
@@ -119,26 +114,22 @@ export function LocationInfoStep({ data, onChange }: LocationInfoStepProps) {
             name="suburb"
             render={({ field }) => (
               <FormItem>
-                <FormLabel className="text-sm">Suburb*</FormLabel>
+                <FormLabel>Suburb</FormLabel>
                 <FormControl>
-                  <Input 
-                    placeholder="Enter suburb" 
-                    {...field} 
-                    className="w-full"
-                  />
+                  <Input placeholder="Melbourne" {...field} />
                 </FormControl>
-                <FormMessage className="text-xs" />
+                <FormMessage />
               </FormItem>
             )}
           />
           
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               control={form.control}
               name="state"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm">State*</FormLabel>
+                  <FormLabel>State</FormLabel>
                   <Select
                     onValueChange={field.onChange}
                     defaultValue={field.value}
@@ -156,7 +147,7 @@ export function LocationInfoStep({ data, onChange }: LocationInfoStepProps) {
                       ))}
                     </SelectContent>
                   </Select>
-                  <FormMessage className="text-xs" />
+                  <FormMessage />
                 </FormItem>
               )}
             />
@@ -166,23 +157,29 @@ export function LocationInfoStep({ data, onChange }: LocationInfoStepProps) {
               name="postcode"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm">Postcode*</FormLabel>
+                  <FormLabel>Postcode</FormLabel>
                   <FormControl>
-                    <Input 
-                      placeholder="Enter postcode" 
-                      {...field} 
-                      className="w-full"
-                    />
+                    <Input placeholder="3000" {...field} />
                   </FormControl>
-                  <FormMessage className="text-xs" />
+                  <FormMessage />
                 </FormItem>
               )}
             />
           </div>
           
-          <p className="text-xs text-muted-foreground mt-2">
-            * Required fields. The suburb will be used as the location name.
-          </p>
+          <FormField
+            control={form.control}
+            name="country"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Country</FormLabel>
+                <FormControl>
+                  <Input disabled {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
       </Form>
     </div>

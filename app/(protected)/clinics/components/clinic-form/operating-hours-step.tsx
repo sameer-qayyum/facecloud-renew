@@ -318,7 +318,7 @@ export function OperatingHoursStep({ data, onChange }: OperatingHoursStepProps) 
                         </FormLabel>
                         <FormControl>
                           <Switch
-                            checked={field.value}
+                            checked={!!field.value}
                             onCheckedChange={checked => {
                               field.onChange(checked);
                               if (!checked) {
@@ -369,8 +369,8 @@ export function OperatingHoursStep({ data, onChange }: OperatingHoursStepProps) 
                           <FormLabel className="text-sm text-slate-700">Opens</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
-                            value={field.value}
+                            defaultValue={field.value as string}
+                            value={field.value as string}
                           >
                             <FormControl>
                               <SelectTrigger className="bg-white">
@@ -398,8 +398,8 @@ export function OperatingHoursStep({ data, onChange }: OperatingHoursStepProps) 
                           <FormLabel className="text-sm text-slate-700">Closes</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
-                            value={field.value}
+                            defaultValue={field.value as string}
+                            value={field.value as string}
                           >
                             <FormControl>
                               <SelectTrigger className="bg-white">
