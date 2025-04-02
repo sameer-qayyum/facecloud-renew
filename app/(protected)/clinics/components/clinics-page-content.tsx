@@ -2,7 +2,6 @@
 
 import { createClient } from '@/utils/supabase/server';
 import { ClinicCard } from '@/app/(protected)/clinics/components/clinic-card';
-import { ClinicFilters } from '@/app/(protected)/clinics/components/clinic-filters';
 import { EmptyState } from '@/app/(protected)/clinics/components/empty-state';
 
 export default async function ClinicsPageContent() {
@@ -15,38 +14,36 @@ export default async function ClinicsPageContent() {
     return <EmptyState />;
   }
   
-  // Get the user's profile to determine role and company_id
-  const { data: userProfile } = await supabase
-    .from('user_profiles')
+  // Get the user's company_id from their staff record
+  const { data: staffRecords } = await supabase
+    .from('staff')
     .select('company_id, role')
-    .eq('id', user.id)
-    .single();
+    .eq('user_id', user.id)
+    .eq('active', true);
   
-  if (!userProfile || !userProfile.company_id) {
+  // User has no active staff records
+  if (!staffRecords || staffRecords.length === 0) {
     return <EmptyState />;
   }
   
+  // Get the company_id from the first staff record
+  const company_id = staffRecords[0].company_id;
+  
   try {
-    // Direct approach: Query companies first to get clinics
-    const { data: company } = await supabase
-      .from('companies')
-      .select('id')
-      .eq('id', userProfile.company_id)
-      .single();
-      
-    if (!company) {
-      return <EmptyState />;
-    }
-    
-    // Now fetch clinics through the company relation
+    // Now fetch clinics for this company
     const { data: clinics, error } = await supabase
       .from('clinics')
       .select(`
         id, 
-        name, 
-        created_at
+        name,
+        company_id,
+        created_by,
+        active,
+        created_at,
+        updated_at
       `)
-      .eq('company_id', userProfile.company_id)
+      .eq('company_id', company_id)
+      .eq('active', true)
       .order('created_at', { ascending: false });
     
     if (error) {
@@ -65,11 +62,21 @@ export default async function ClinicsPageContent() {
       return <EmptyState />;
     }
     
-    // Fetch locations separately to avoid the recursion in the join
+    // Fetch locations separately with the new fields
     const locationPromises = clinics.map(clinic => 
       supabase
         .from('locations')
-        .select('id, name, address, phone, email')
+        .select(`
+          id, 
+          name, 
+          address, 
+          suburb,
+          state,
+          postcode,
+          country,
+          phone, 
+          email
+        `)
         .eq('clinic_id', clinic.id)
         .limit(1)
         .single()
@@ -86,11 +93,15 @@ export default async function ClinicsPageContent() {
       return map;
     }, {} as Record<string, any>);
     
-    // Transform the data with locations
+    // Transform the data with locations and include all required fields
     const processedClinics = clinics.map(clinic => ({
       id: clinic.id,
       name: clinic.name,
+      company_id: clinic.company_id,
+      created_by: clinic.created_by,
+      active: clinic.active,
       created_at: clinic.created_at,
+      updated_at: clinic.updated_at,
       location: locationsMap[clinic.id] || null
     }));
   

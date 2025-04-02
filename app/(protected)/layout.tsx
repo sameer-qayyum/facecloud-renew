@@ -11,6 +11,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import theme from '@/app/theme/theme';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Toaster } from '@/components/ui/toaster';
 
 export default function ProtectedLayout({
   children,
@@ -97,6 +98,7 @@ export default function ProtectedLayout({
             <DashboardFooter />
           </div>
         </div>
+        <Toaster />
       </SidebarProvider>
     </ThemeProvider>
   );
