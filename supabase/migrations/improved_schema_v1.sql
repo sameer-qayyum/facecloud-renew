@@ -173,13 +173,23 @@ USING (
 );
 
 -- 🔥 Company Owners Policies
-CREATE POLICY "Company owners can manage ownership"
+-- Drop the problematic policy
+DROP POLICY "Company owners can manage ownership" ON company_owners;
+
+-- Create two separate policies
+-- 1. Users can see company_owners records for themselves
+CREATE POLICY "Users can view their own company ownerships" 
+ON company_owners FOR SELECT
+USING (user_id = auth.uid());
+
+-- 2. Company owners can manage ownership
+CREATE POLICY "Company owners can manage company ownership"
 ON company_owners FOR ALL
 USING (
     EXISTS (
-        SELECT 1 FROM company_owners
-        WHERE company_owners.company_id = company_owners.company_id
-        AND company_owners.user_id = auth.uid()
+        SELECT 1 FROM company_owners co
+        WHERE co.company_id = company_owners.company_id
+        AND co.user_id = auth.uid()
     )
 );
 

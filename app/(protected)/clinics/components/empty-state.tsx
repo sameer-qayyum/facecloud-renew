@@ -13,7 +13,7 @@ export function EmptyState() {
         You haven&apos;t added any clinics yet. Create your first clinic to start managing appointments and staff.
       </p>
       <Button asChild>
-        <Link href="/clinics/new">
+        <Link href="/clinics/add-clinic">
           Add Your First Clinic
         </Link>
       </Button>

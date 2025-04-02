@@ -13,7 +13,7 @@ export default async function ClinicsPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Your Clinics</h1>
         <Button asChild>
-          <Link href="/clinics/new">Add a Clinic</Link>
+          <Link href="/clinics/add-clinic">Add a Clinic</Link>
         </Button>
       </div>
       

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
@@ -18,6 +18,7 @@ import { OperatingHoursStep, OperatingHours } from './clinic-form/operating-hour
 import { ReviewStep } from './clinic-form/review-step';
 import { createClinic, saveClinicDraft } from '../actions';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { createClient } from '@/utils/supabase/client';
 
 // Define contact info interface
 interface ContactInfo {
@@ -64,6 +65,10 @@ export function NewClinicForm() {
   const [currentStep, setCurrentStep] = useState<string>(STEPS[0]);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [clinicCreated, setClinicCreated] = useState<{
+    clinicId: string;
+    locationId: string;
+  } | null>(null);
   
   // Initialize form data
   const [formData, setFormData] = useState<ClinicFormData>({
@@ -91,6 +96,78 @@ export function NewClinicForm() {
       sunday: { isOpen: false },
     }
   });
+  
+  // Set up real-time subscription when a clinic is created
+  useEffect(() => {
+    if (!clinicCreated) return;
+    
+    const setupRealtimeSubscription = async () => {
+      const supabase = createClient();
+      
+      // Subscribe to clinics table for real-time updates
+      const clinicsSubscription = supabase
+        .channel('clinics-updates')
+        .on('postgres_changes', 
+          { 
+            event: '*', 
+            schema: 'public', 
+            table: 'clinics',
+            filter: `id=eq.${clinicCreated.clinicId}`
+          }, 
+          (payload) => {
+            // Auto-refresh data or update UI as needed
+            console.log('Clinic updated:', payload);
+            router.refresh();
+          }
+        )
+        .subscribe();
+        
+      // Subscribe to locations table for real-time updates  
+      const locationsSubscription = supabase
+        .channel('locations-updates')
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'locations',
+            filter: `id=eq.${clinicCreated.locationId}`
+          },
+          (payload) => {
+            // Auto-refresh data or update UI as needed
+            console.log('Location updated:', payload);
+            router.refresh();
+          }
+        )
+        .subscribe();
+      
+      // Subscribe to staff table for real-time updates
+      const staffSubscription = supabase
+        .channel('staff-updates')
+        .on('postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'staff',
+            filter: `clinic_id=eq.${clinicCreated.clinicId}`
+          },
+          (payload) => {
+            // Auto-refresh data or update UI as needed
+            console.log('Staff updated:', payload);
+            router.refresh();
+          }
+        )
+        .subscribe();
+        
+      // Clean up subscriptions when component unmounts
+      return () => {
+        supabase.removeChannel(clinicsSubscription);
+        supabase.removeChannel(locationsSubscription);
+        supabase.removeChannel(staffSubscription);
+      };
+    };
+    
+    setupRealtimeSubscription();
+  }, [clinicCreated, router]);
   
   // Update clinic data
   const updateClinicData = (data: Partial<Clinic>) => {
@@ -200,23 +277,28 @@ export function NewClinicForm() {
     }
   };
   
-  // Handle form submission
+  // Convert logo file to base64
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
+  // Submit the form
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    
+
     try {
-      // Convert logo to base64 if present (for API submission)
+      // Prepare logo if it exists
       let logoBase64: string | undefined = undefined;
-      
-      if (formData.clinic.logo && formData.clinic.logo.size > 0) {
-        const reader = new FileReader();
-        logoBase64 = await new Promise((resolve) => {
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(formData.clinic.logo as File);
-        });
+      if (formData.clinic.logo) {
+        logoBase64 = await fileToBase64(formData.clinic.logo);
       }
       
-      // Prepare submission data
+      // Create submission data
       const submissionData: ClinicSubmissionData = {
         clinic: {
           name: formData.clinic.name,
@@ -224,50 +306,68 @@ export function NewClinicForm() {
         },
         location: {
           ...formData.location,
-          ...formData.contact
+          ...formData.contact,
         },
         operatingHours: formData.operatingHours,
       };
       
-      // Submit the data
       const result = await createClinic(submissionData);
       
       if (result.success) {
-        toast({
-          title: "Clinic created",
-          description: "Your clinic has been created successfully."
+        // Store clinic and location IDs for real-time updates
+        setClinicCreated({
+          clinicId: result.clinicId,
+          locationId: result.locationId
         });
         
-        // Redirect to the clinics page
-        router.push('/clinics');
-        router.refresh();
-      } else {
-        throw new Error('Failed to create clinic');
+        toast({
+          title: "Clinic created!",
+          description: "Your clinic has been created successfully.",
+        });
+        
+        // Redirect to the new clinic page after a short delay
+        // This gives time for the real-time subscription to initialize
+        setTimeout(() => {
+          router.push(result.redirectPath);
+          router.refresh();
+        }, 1000);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating clinic:', error);
       toast({
         title: "Error creating clinic",
-        description: "There was a problem creating your clinic. Please try again.",
+        description: error.message || "There was a problem creating your clinic. Please try again.",
         variant: "destructive",
       });
+    } finally {
       setIsSubmitting(false);
     }
   };
-  
+
   return (
-    <div className="max-w-3xl mx-auto">
-      <Card className="shadow-sm">
-        <Tabs value={currentStep} onValueChange={setCurrentStep}>
-          <TabsList className="grid grid-cols-5 bg-muted/50 p-1">
-            <TabsTrigger value="basic" className="text-xs sm:text-sm py-1.5">Basic</TabsTrigger>
-            <TabsTrigger value="location" className="text-xs sm:text-sm py-1.5">Location</TabsTrigger>
-            <TabsTrigger value="contact" className="text-xs sm:text-sm py-1.5">Contact</TabsTrigger>
-            <TabsTrigger value="hours" className="text-xs sm:text-sm py-1.5">Hours</TabsTrigger>
-            <TabsTrigger value="review" className="text-xs sm:text-sm py-1.5">Review</TabsTrigger>
-          </TabsList>
-          
-          <CardContent className="p-3 sm:p-4">
+    <div className="space-y-8">
+      <Tabs value={currentStep} className="w-full">
+        <TabsList className="grid grid-cols-5 w-full">
+          <TabsTrigger value="basic" onClick={() => goToStep('basic')}>
+            Basic Info
+          </TabsTrigger>
+          <TabsTrigger value="location" onClick={() => goToStep('location')}>
+            Location
+          </TabsTrigger>
+          <TabsTrigger value="contact" onClick={() => goToStep('contact')}>
+            Contact
+          </TabsTrigger>
+          <TabsTrigger value="hours" onClick={() => goToStep('hours')}>
+            Hours
+          </TabsTrigger>
+          <TabsTrigger value="review" onClick={() => goToStep('review')}>
+            Review
+          </TabsTrigger>
+        </TabsList>
+        
+        {/* Card with content */}
+        <Card className="mt-4 border-t-0 rounded-t-none shadow-sm">
+          <CardContent className="pt-6">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentStep}
@@ -277,102 +377,95 @@ export function NewClinicForm() {
                 transition={{ duration: 0.2 }}
               >
                 <TabsContent value="basic" className="mt-0">
-                  <BasicInfoStep 
-                    data={formData.clinic} 
-                    onChange={updateClinicData} 
+                  <BasicInfoStep
+                    data={formData.clinic}
+                    onChange={updateClinicData}
                   />
                 </TabsContent>
-
+                
                 <TabsContent value="location" className="mt-0">
-                  <LocationInfoStep 
-                    data={formData.location} 
-                    onChange={updateLocationData} 
+                  <LocationInfoStep
+                    data={formData.location}
+                    onChange={updateLocationData}
                   />
                 </TabsContent>
-
+                
                 <TabsContent value="contact" className="mt-0">
-                  <ContactInfoStep 
-                    data={formData.contact} 
-                    onChange={updateContactData} 
+                  <ContactInfoStep
+                    data={formData.contact}
+                    onChange={updateContactData}
                   />
                 </TabsContent>
-
+                
                 <TabsContent value="hours" className="mt-0">
-                  <OperatingHoursStep 
-                    data={formData.operatingHours} 
-                    onChange={updateOperatingHoursData} 
+                  <OperatingHoursStep
+                    data={formData.operatingHours}
+                    onChange={updateOperatingHoursData}
                   />
                 </TabsContent>
-
+                
                 <TabsContent value="review" className="mt-0">
                   <ReviewStep data={formData} />
                 </TabsContent>
               </motion.div>
             </AnimatePresence>
           </CardContent>
+        </Card>
+      </Tabs>
+      
+      {/* Navigation and submission buttons */}
+      <div className="flex justify-between items-center mt-6">
+        <div>
+          {!isFirstStep() && (
+            <Button 
+              variant="outline" 
+              onClick={prevStep}
+              disabled={isSubmitting}
+            >
+              Back
+            </Button>
+          )}
+        </div>
+        
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            onClick={saveDraft}
+            disabled={isSubmitting || isSaving}
+            className="min-w-[140px]"
+          >
+            {isSaving ? (
+              <>
+                <LoadingSpinner className="mr-2 h-4 w-4 animate-spin" />
+                Saving Draft...
+              </>
+            ) : (
+              'Save as Draft'
+            )}
+          </Button>
           
-          <div className="p-3 sm:p-4 border-t flex flex-col-reverse sm:flex-row items-center justify-between gap-3">
-            <div className="w-full sm:w-auto flex gap-2">
-              {!isFirstStep() && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={prevStep}
-                  disabled={isSubmitting || isSaving}
-                  className="flex-1 sm:flex-auto"
-                >
-                  Previous
-                </Button>
-              )}
-              
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={saveDraft}
-                disabled={isSubmitting || isSaving}
-                className="flex-1 sm:flex-auto"
-              >
-                {isSaving ? (
-                  <>
-                    <LoadingSpinner className="mr-2 h-4 w-4" />
-                    Saving...
-                  </>
-                ) : (
-                  'Save Draft'
-                )}
-              </Button>
-            </div>
-            
-            <div className="w-full sm:w-auto">
-              {isLastStep() ? (
-                <Button
-                  size="sm"
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || isSaving}
-                  className="w-full"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <LoadingSpinner className="mr-2 h-4 w-4" />
-                      Creating...
-                    </>
-                  ) : (
-                    'Create Clinic'
-                  )}
-                </Button>
+          {isLastStep() ? (
+            <Button 
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 min-w-[160px]"
+            >
+              {isSubmitting ? (
+                <>
+                  <LoadingSpinner className="mr-2 h-4 w-4 animate-spin" />
+                  Creating Clinic...
+                </>
               ) : (
-                <Button
-                  size="sm"
-                  onClick={nextStep}
-                  className="w-full"
-                >
-                  Next
-                </Button>
+                'Create Clinic'
               )}
-            </div>
-          </div>
-        </Tabs>
-      </Card>
+            </Button>
+          ) : (
+            <Button onClick={nextStep}>
+              Next
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

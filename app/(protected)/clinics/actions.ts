@@ -32,9 +32,37 @@ interface ClinicSubmissionData {
 }
 
 /**
+ * Format operating hours from form structure to database JSONB structure
+ */
+function formatOperatingHoursForDb(hours: OperatingHours): Record<string, string[]> {
+  const dbFormat: Record<string, string[]> = {};
+  
+  // Map day names to database format
+  const dayMapping: Record<string, string> = {
+    'monday': 'mon',
+    'tuesday': 'tue',
+    'wednesday': 'wed',
+    'thursday': 'thu',
+    'friday': 'fri',
+    'saturday': 'sat',
+    'sunday': 'sun'
+  };
+  
+  // Convert from our form format to the DB format
+  Object.entries(hours).forEach(([day, schedule]) => {
+    if (schedule.isOpen && schedule.openTime && schedule.closeTime) {
+      const dbDay = dayMapping[day];
+      dbFormat[dbDay] = [`${schedule.openTime}-${schedule.closeTime}`];
+    }
+  });
+  
+  return dbFormat;
+}
+
+/**
  * Save clinic form as a draft
  */
-export async function saveClinicDraft(data: ClinicSubmissionData) {
+export async function saveClinicDraft(data: ClinicSubmissionData): Promise<{ success: boolean; draftKey: string }> {
   const supabase = await createClient();
   
   // Get the current user
@@ -44,9 +72,9 @@ export async function saveClinicDraft(data: ClinicSubmissionData) {
     throw new Error('You must be logged in to save a draft');
   }
   
-  // Get the user's company ID from staff record
+  // Get the user's company ID from company_owners record
   const { data: staffRecords } = await supabase
-    .from('staff')
+    .from('company_owners')
     .select('company_id')
     .eq('user_id', user.id);
   
@@ -68,7 +96,7 @@ export async function saveClinicDraft(data: ClinicSubmissionData) {
 /**
  * Create a new clinic with its location and operating hours
  */
-export async function createClinic(data: ClinicSubmissionData) {
+export async function createClinic(data: ClinicSubmissionData): Promise<{ success: boolean; clinicId: string; locationId: string; redirectPath: string }> {
   const supabase = await createClient();
   
   // Get the current user
@@ -78,25 +106,30 @@ export async function createClinic(data: ClinicSubmissionData) {
     throw new Error('You must be logged in to create a clinic');
   }
   
-  // Get the user's company ID from staff record
-  const { data: staffRecords } = await supabase
-    .from('staff')
-    .select('company_id, role')
-    .eq('user_id', user.id);
-  
-  if (!staffRecords || staffRecords.length === 0) {
-    throw new Error('You must be associated with a company to create clinics');
-  }
-  
-  // Check if user has permission (owner or manager)
-  const userRoles = staffRecords.map(record => record.role);
-  if (!userRoles.some(role => ['owner', 'manager'].includes(role))) {
-    throw new Error('You must be an owner or manager to create clinics');
-  }
-  
-  const company_id = staffRecords[0].company_id;
-  
   try {
+    // Get the user's company through company_owners with debug logging
+    console.log('Checking company ownership for user:', user.id);
+    
+    const { data: ownedCompanies, error: ownershipError } = await supabase
+      .from('company_owners')
+      .select('company_id, user_id')
+      .eq('user_id', user.id)
+      .limit(1);
+    
+    console.log('Company ownership query result:', ownedCompanies);
+    console.log('Company ownership query error:', ownershipError);
+    
+    if (ownershipError) {
+      console.error('Error fetching company ownership:', ownershipError);
+      throw ownershipError;
+    }
+    
+    if (!ownedCompanies || ownedCompanies.length === 0) {
+      throw new Error('No company found. Please ensure your account is properly set up with a company.');
+    }
+    
+    const company_id = ownedCompanies[0].company_id;
+    
     // Upload logo if provided (optimize with smaller size for better performance)
     let logoUrl = null;
     if (data.clinic.logoBase64) {
@@ -107,7 +140,7 @@ export async function createClinic(data: ClinicSubmissionData) {
       const fileName = `clinic-logos/${company_id}/${Date.now()}.png`;
       
       // Upload to storage bucket
-      const { data: uploadData, error: uploadError } = await supabase
+      const { error: uploadError } = await supabase
         .storage
         .from('clinic-assets')
         .upload(fileName, Buffer.from(base64Data, 'base64'), {
@@ -129,7 +162,7 @@ export async function createClinic(data: ClinicSubmissionData) {
       }
     }
     
-    // Start a transaction to create both clinic and location
+    // 1. Create the clinic
     const { data: clinic, error: clinicError } = await supabase
       .from('clinics')
       .insert({
@@ -143,12 +176,12 @@ export async function createClinic(data: ClinicSubmissionData) {
       
     if (clinicError) throw clinicError;
     
-    // Create the location for this clinic
+    // 2. Create the location with operating hours in JSONB format
     const { data: location, error: locationError } = await supabase
       .from('locations')
       .insert({
         clinic_id: clinic.id,
-        name: data.location.suburb || 'Main Location', // Using suburb as the location name
+        name: data.location.suburb || 'Main Location',
         address: data.location.address,
         suburb: data.location.suburb,
         state: data.location.state,
@@ -156,6 +189,7 @@ export async function createClinic(data: ClinicSubmissionData) {
         country: data.location.country || 'Australia',
         phone: data.location.phone,
         email: data.location.email,
+        opening_hours: formatOperatingHoursForDb(data.operatingHours),
         created_by: user.id,
       })
       .select()
@@ -163,24 +197,19 @@ export async function createClinic(data: ClinicSubmissionData) {
     
     if (locationError) throw locationError;
     
-    // Store operating hours in the database
-    // Note: You'll need to make sure this table exists in your database
-    for (const [day, schedule] of Object.entries(data.operatingHours)) {
-      if (schedule.isOpen) {
-        const { error: hoursError } = await supabase
-          .from('clinic_hours')
-          .insert({
-            clinic_id: clinic.id,
-            location_id: location.id,
-            day_of_week: day,
-            open_time: schedule.openTime,
-            close_time: schedule.closeTime,
-            created_by: user.id,
-          });
-        
-        if (hoursError) throw hoursError;
-      }
-    }
+    // 3. Add current user as staff with owner role for this clinic
+    const { error: staffError } = await supabase
+      .from('staff')
+      .insert({
+        user_id: user.id,
+        company_id,
+        clinic_id: clinic.id,
+        location_id: location.id,
+        role: 'owner',
+        created_by: user.id,
+      });
+    
+    if (staffError) throw staffError;
     
     // Revalidate clinics page to show the new clinic
     revalidatePath('/clinics');
@@ -189,7 +218,7 @@ export async function createClinic(data: ClinicSubmissionData) {
       success: true,
       clinicId: clinic.id,
       locationId: location.id,
-      redirectPath: '/clinics',
+      redirectPath: `/clinics/${clinic.id}`,
     };
   } catch (error) {
     console.error('Error creating clinic:', error);
