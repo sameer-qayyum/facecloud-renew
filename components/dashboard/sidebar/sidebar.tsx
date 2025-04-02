@@ -8,14 +8,17 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import { SidebarNav } from './sidebar-nav';
 import { mainNavItems, secondaryNavItems } from '@/lib/constants/navigation';
-import { UserProfile } from '@/lib/types/user-profiles';
+import { UserProfile, StaffMember, UserRole } from '@/lib/types/user-profiles';
 import { PanelLeft, PanelLeftClose } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useSidebar } from './sidebar-context';
 
 interface SidebarProps {
-  user?: UserProfile;
+  user?: UserProfile & { 
+    staff?: StaffMember[];
+    companyOwner?: boolean;
+  };
 }
 
 export function Sidebar({ user }: SidebarProps) {
@@ -42,6 +45,12 @@ export function Sidebar({ user }: SidebarProps) {
   const getInitials = () => {
     if (!user) return 'FC';
     return `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`;
+  };
+
+  // Get user's primary role (first role in their staff records or null)
+  const getPrimaryRole = (): UserRole | null => {
+    if (!user?.staff || user.staff.length === 0) return null;
+    return user.staff[0].role;
   };
 
   // Desktop sidebar
@@ -114,7 +123,7 @@ export function Sidebar({ user }: SidebarProps) {
           {/* Main navigation */}
           <SidebarNav
             items={mainNavItems}
-            userRole={user?.role}
+            userRole={getPrimaryRole()}
             isCollapsed={isCollapsed}
             className="mb-6"
           />
@@ -123,7 +132,7 @@ export function Sidebar({ user }: SidebarProps) {
           <SidebarNav
             items={secondaryNavItems}
             title={isCollapsed ? undefined : "Configuration"}
-            userRole={user?.role}
+            userRole={getPrimaryRole()}
             isCollapsed={isCollapsed}
             className="mt-6"
           />
@@ -143,7 +152,7 @@ export function Sidebar({ user }: SidebarProps) {
           {!isCollapsed && (
             <div className="flex flex-col">
               <span className="text-sm font-medium">{user?.first_name} {user?.last_name}</span>
-              <span className="text-xs text-muted-foreground capitalize">{user?.role}</span>
+              <span className="text-xs text-muted-foreground capitalize">{getPrimaryRole()}</span>
             </div>
           )}
         </div>
@@ -185,7 +194,7 @@ export function Sidebar({ user }: SidebarProps) {
               </Avatar>
               <div className="flex flex-col">
                 <span className="text-sm font-medium">{user?.first_name} {user?.last_name}</span>
-                <span className="text-xs text-muted-foreground capitalize">{user?.role}</span>
+                <span className="text-xs text-muted-foreground capitalize">{getPrimaryRole()}</span>
               </div>
             </div>
           </div>
@@ -197,7 +206,7 @@ export function Sidebar({ user }: SidebarProps) {
               <SidebarNav
                 items={mainNavItems}
                 title="Main"
-                userRole={user?.role}
+                userRole={getPrimaryRole()}
                 className="mb-6"
               />
               
@@ -207,18 +216,11 @@ export function Sidebar({ user }: SidebarProps) {
               <SidebarNav
                 items={secondaryNavItems}
                 title="Configuration"
-                userRole={user?.role}
-                className="mt-4"
+                userRole={getPrimaryRole()}
+                className="mb-6"
               />
             </div>
           </ScrollArea>
-          
-          {/* Footer */}
-          <div className="mt-auto border-t p-4">
-            <div className="flex justify-between items-center">
-              <span className="text-xs text-muted-foreground">&copy; 2025 FaceCloud</span>
-            </div>
-          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -227,7 +229,7 @@ export function Sidebar({ user }: SidebarProps) {
   return (
     <>
       {DesktopSidebar}
-      {MobileSidebar}
+      {isMobile && MobileSidebar}
     </>
   );
 }

@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Search, Menu, Plus } from 'lucide-react';
-import { UserProfile } from '@/lib/types/user-profiles';
+import { UserProfile, EnhancedUserProfile, StaffMember, UserRole } from '@/lib/types/user-profiles';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -27,7 +27,10 @@ import {
 } from '@/components/ui/sheet';
 
 interface DashboardHeaderProps {
-  user?: UserProfile;
+  user?: UserProfile & { 
+    staff?: StaffMember[];
+    companyOwner?: boolean;
+  };
 }
 
 export function DashboardHeader({ user }: DashboardHeaderProps) {
@@ -67,12 +70,43 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
     return `${user.first_name} ${user.last_name}`;
   };
 
+  // Get user's primary role (first role in their staff records or empty string)
+  const getPrimaryRole = (): UserRole | '' => {
+    if (!user?.staff || user.staff.length === 0) return '';
+    return user.staff[0].role;
+  };
+
   // Determine role display
   const getUserRole = () => {
-    if (!user) return '';
+    const primaryRole = getPrimaryRole();
+    if (!primaryRole) return '';
+    
     // Format the role with "Dr" prefix for doctors
-    if (user.role === 'doctor') return `Dr ${user.last_name}`;
-    return user.role.charAt(0).toUpperCase() + user.role.slice(1);
+    if (primaryRole === 'doctor') return `Dr ${user?.last_name}`;
+    return primaryRole.charAt(0).toUpperCase() + primaryRole.slice(1);
+  };
+
+  // Check if user has any of the specified roles in any clinic
+  const hasAnyRole = (roles: UserRole[]): boolean => {
+    if (!user?.staff || user.staff.length === 0) return false;
+    return user.staff.some(staffRecord => 
+      roles.includes(staffRecord.role) && staffRecord.active
+    );
+  };
+
+  // Check if user is an owner (either via ownership table or staff role)
+  const isOwner = (): boolean => {
+    return user?.companyOwner === true || hasAnyRole(['owner']);
+  };
+
+  // Check if user is a manager
+  const isManager = (): boolean => {
+    return hasAnyRole(['manager']);
+  };
+
+  // Check if user is an admin
+  const isAdmin = (): boolean => {
+    return hasAnyRole(['admin']);
   };
 
   return (
@@ -169,14 +203,14 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
                     Add Patient
                   </Link>
                 </DropdownMenuItem>
-                {(user?.role === 'owner' || user?.role === 'manager') && (
+                {(isOwner() || isManager()) && (
                   <DropdownMenuItem asChild>
                     <Link href="/clinics/new" className="cursor-pointer">
                       Add Clinic
                     </Link>
                   </DropdownMenuItem>
                 )}
-                {(user?.role === 'owner' || user?.role === 'manager' || user?.role === 'admin') && (
+                {(isOwner() || isManager() || isAdmin()) && (
                   <DropdownMenuItem asChild>
                     <Link href="/inventory/new" className="cursor-pointer">
                       Add Inventory Item
@@ -212,7 +246,7 @@ export function DashboardHeader({ user }: DashboardHeaderProps) {
               </TooltipTrigger>
               <TooltipContent>
                 <p>{getUserFullName()}</p>
-                <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+                <p className="text-xs text-gray-500 capitalize">{getPrimaryRole()}</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
