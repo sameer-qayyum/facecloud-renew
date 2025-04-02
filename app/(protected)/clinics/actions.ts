@@ -225,3 +225,170 @@ export async function createClinic(data: ClinicSubmissionData): Promise<{ succes
     throw error;
   }
 }
+
+/**
+ * Update a clinic's active status
+ */
+export async function updateClinicStatus(clinicId: string, active: boolean): Promise<{ success: boolean }> {
+  const supabase = await createClient();
+  
+  // Get the current user
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('You must be logged in to perform this action');
+  }
+  
+  try {
+    // Update the clinic status
+    const { error } = await supabase
+      .from('clinics')
+      .update({ active, updated_at: new Date().toISOString() })
+      .eq('id', clinicId);
+    
+    if (error) throw error;
+    
+    // Revalidate the clinics page to show updated status
+    revalidatePath('/clinics');
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating clinic status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Soft delete a clinic
+ */
+export async function softDeleteClinic(clinicId: string): Promise<{ success: boolean }> {
+  const supabase = await createClient();
+  
+  // Get the current user
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('You must be logged in to perform this action');
+  }
+  
+  try {
+    // Soft delete the clinic
+    const { error } = await supabase
+      .from('clinics')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', clinicId);
+    
+    if (error) throw error;
+    
+    // Revalidate the clinics page to show updated status
+    revalidatePath('/clinics');
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error soft deleting clinic:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update clinic details and location information
+ */
+export async function updateClinic(clinicId: string, data: ClinicSubmissionData): Promise<{ success: boolean }> {
+  const supabase = await createClient();
+  
+  // Get the current user
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    throw new Error('You must be logged in to perform this action');
+  }
+  
+  try {
+    // Upload logo if provided (optimize with smaller size for better performance)
+    let logoUrl = null;
+    if (data.clinic.logoBase64) {
+      // Extract the base64 data part (remove the data:image/xxx;base64, prefix)
+      const base64Data = data.clinic.logoBase64.split(',')[1];
+      
+      // Get company ID for the logo path
+      const { data: clinicData, error: clinicDataError } = await supabase
+        .from('clinics')
+        .select('company_id')
+        .eq('id', clinicId)
+        .single();
+      
+      if (clinicDataError || !clinicData) {
+        console.error('Error getting clinic data:', clinicDataError);
+        throw new Error('Failed to get clinic data for logo upload');
+      }
+      
+      // Generate a unique file name using timestamp
+      const fileName = `clinic-logos/${clinicData.company_id}/${Date.now()}.png`;
+      
+      // Upload to storage bucket
+      const { error: uploadError } = await supabase
+        .storage
+        .from('clinic-assets')
+        .upload(fileName, Buffer.from(base64Data, 'base64'), {
+          contentType: 'image/png',
+          cacheControl: '3600',
+          upsert: true // Override existing logo
+        });
+      
+      if (uploadError) {
+        console.error('Error uploading logo:', uploadError);
+      } else {
+        // Get public URL
+        const { data: publicUrlData } = supabase
+          .storage
+          .from('clinic-assets')
+          .getPublicUrl(fileName);
+        
+        logoUrl = publicUrlData.publicUrl;
+      }
+    }
+    
+    // 1. Update the clinic details
+    const clinicUpdate: any = {
+      name: data.clinic.name,
+      updated_at: new Date().toISOString()
+    };
+    
+    // Only add logo_url if a new logo was uploaded
+    if (logoUrl) {
+      clinicUpdate.logo_url = logoUrl;
+    }
+    
+    const { error: clinicError } = await supabase
+      .from('clinics')
+      .update(clinicUpdate)
+      .eq('id', clinicId);
+    
+    if (clinicError) throw clinicError;
+    
+    // 2. Update the location with operating hours
+    const { error: locationError } = await supabase
+      .from('locations')
+      .update({
+        name: data.location.suburb || 'Main Location',
+        address: data.location.address,
+        suburb: data.location.suburb,
+        state: data.location.state,
+        postcode: data.location.postcode,
+        country: data.location.country || 'Australia',
+        phone: data.location.phone,
+        email: data.location.email,
+        opening_hours: formatOperatingHoursForDb(data.operatingHours),
+        updated_at: new Date().toISOString()
+      })
+      .eq('clinic_id', clinicId);
+    
+    if (locationError) throw locationError;
+    
+    // Revalidate paths
+    revalidatePath('/clinics');
+    revalidatePath(`/clinics/${clinicId}`);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating clinic:', error);
+    throw error;
+  }
+}
