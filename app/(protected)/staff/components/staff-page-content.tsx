@@ -1,7 +1,7 @@
 'use server';
 
 import { createClient } from '@/utils/supabase/server';
-import { StaffCard } from '@/app/(protected)/staff/components/staff-card';
+import { StaffTable } from '@/app/(protected)/staff/components/staff-table';
 import { EmptyState } from '@/app/(protected)/staff/components/empty-state';
 import { ClinicSelector } from '@/app/(protected)/staff/components/clinic-selector';
 
@@ -148,22 +148,16 @@ export default async function StaffPageContent() {
     }));
   
     return (
-      <>
+      <div className="space-y-6">
         {clinics && clinics.length > 1 && (
-          <div className="mb-6">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-bold tracking-tight">Staff</h2>
             <ClinicSelector clinics={clinics} />
           </div>
         )}
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {processedStaff.map(staff => (
-            <StaffCard 
-              key={staff.id} 
-              staff={staff} 
-            />
-          ))}
-        </div>
-      </>
+        <StaffTable staff={processedStaff} />
+      </div>
     );
   } catch (err) {
     console.error('Unexpected error:', err);

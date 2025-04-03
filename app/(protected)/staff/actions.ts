@@ -96,28 +96,81 @@ export async function createStaff(formData: StaffFormValues) {
       // No need to manually create user_profile - the database trigger does this for us
     }
     
-    // Create staff record
-    const { data: newStaff, error: staffError } = await supabase
-      .from('staff')
-      .insert({
+    // If clinic is specified, get its locations
+    let locations = [];
+    if (validatedData.clinicId) {
+      const { data: clinicLocations, error: locationsError } = await supabase
+        .from('locations')
+        .select('id')
+        .eq('clinic_id', validatedData.clinicId);
+      
+      if (locationsError) {
+        console.error('Error fetching locations:', locationsError);
+        return { error: `Failed to fetch clinic locations: ${locationsError.message}` };
+      }
+      
+      locations = clinicLocations || [];
+    }
+    
+    // Create staff records - one for each location if clinic has locations
+    let staffRecords = [];
+    let newStaff = null;
+    
+    if (locations.length > 0) {
+      // Create multiple staff records, one for each location
+      const staffInserts = locations.map(location => ({
         user_id: userId,
         company_id: staffData.company_id,
-        clinic_id: validatedData.clinicId || null,
+        clinic_id: validatedData.clinicId,
+        location_id: location.id,
         role: validatedData.role,
         active: validatedData.active,
         created_by: user.id,
-      })
-      .select()
-      .single();
-    
-    if (staffError) {
-      return { error: `Failed to create staff record: ${staffError.message}` };
+      }));
+      
+      const { data: insertedStaff, error: bulkInsertError } = await supabase
+        .from('staff')
+        .insert(staffInserts)
+        .select();
+      
+      if (bulkInsertError) {
+        return { error: `Failed to create staff records: ${bulkInsertError.message}` };
+      }
+      
+      staffRecords = insertedStaff || [];
+      newStaff = staffRecords[0]; // Use the first record as the primary
+    } else {
+      // No locations or no clinic specified, create a single staff record without location
+      const { data: singleStaff, error: staffError } = await supabase
+        .from('staff')
+        .insert({
+          user_id: userId,
+          company_id: staffData.company_id,
+          clinic_id: validatedData.clinicId || null,
+          location_id: null,
+          role: validatedData.role,
+          active: validatedData.active,
+          created_by: user.id,
+        })
+        .select()
+        .single();
+      
+      if (staffError) {
+        return { error: `Failed to create staff record: ${staffError.message}` };
+      }
+      
+      newStaff = singleStaff;
+      staffRecords = [singleStaff];
     }
     
     // Revalidate staff page to reflect the changes
     revalidatePath('/staff');
     
-    return { data: newStaff, success: true };
+    return { 
+      data: newStaff, 
+      allRecords: staffRecords.length > 1 ? staffRecords : undefined,
+      success: true 
+    };
   } catch (error) {
     if (error instanceof z.ZodError) {
       return { error: 'Validation error', details: error.errors };
