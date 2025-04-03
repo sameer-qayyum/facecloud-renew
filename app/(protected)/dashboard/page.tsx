@@ -3,8 +3,140 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarIcon, UsersIcon, CreditCardIcon, PieChartIcon } from "lucide-react";
+import { useEffect } from "react";
+import { useSearchParams } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 
 export default function DashboardPage() {
+  const searchParams = useSearchParams();
+  
+  // Ultra-fast authentication check for onboarding
+  useEffect(() => {
+    const checkUrlAndSetSession = async () => {
+      // Check for hash fragment from magic link redirect (#access_token=...)
+      if (typeof window !== 'undefined' && window.location.hash) {
+        console.log('Found hash fragment, attempting to extract tokens');
+        
+        try {
+          // Extract the part after the '#'
+          const fragment = window.location.hash.substring(1);
+          
+          // Convert the fragment into an object
+          const params = new URLSearchParams(fragment);
+          const access_token = params.get('access_token');
+          const refresh_token = params.get('refresh_token');
+          
+          console.log('Extracted tokens:', { 
+            hasAccessToken: !!access_token, 
+            hasRefreshToken: !!refresh_token 
+          });
+          
+          if (typeof access_token === 'string' && typeof refresh_token === 'string') {
+            // Create Supabase client
+            const supabase = createClient();
+            
+            console.log('Setting session manually with extracted tokens');
+            
+            // Set up listener first
+            const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+              console.log('Auth state changed after manual setting:', event);
+            });
+            
+            // Manually set the session using extracted tokens
+            const { data, error } = await supabase.auth.setSession({
+              access_token,
+              refresh_token,
+            });
+            
+            if (error) {
+              console.error('Error setting session:', error);
+            } else {
+              console.log('Session set successfully:', !!data.session);
+              
+              // Clean up hash fragment from URL to avoid exposure of tokens
+              window.history.replaceState(
+                {}, 
+                document.title, 
+                window.location.pathname + (searchParams.get('onboard') ? '?onboard=true' : '')
+              );
+              
+              // Clean up subscription
+              subscription.unsubscribe();
+              
+              // Force refresh to ensure we have the latest auth state
+              window.location.reload();
+            }
+          }
+        } catch (err) {
+          console.error('Error parsing hash fragment:', err);
+        }
+      }
+    };
+    
+    // Check URL hash first
+    checkUrlAndSetSession();
+    
+    // Then check for onboard parameter
+    if (searchParams.get('onboard') === 'true') {
+      console.log('Dashboard detected onboard=true parameter');
+      
+      // Check for token parameter
+      const token = searchParams.get('token');
+      const tokenHash = searchParams.get('token_hash');
+      const type = searchParams.get('type') || 'magiclink';
+      
+      console.log('Token parameters found:', { 
+        hasToken: !!token, 
+        hasTokenHash: !!tokenHash, 
+        type 
+      });
+      
+      // Force authentication check directly on dashboard page
+      const checkAuthentication = async () => {
+        const supabase = createClient();
+        
+        // First try to authenticate with token if present
+        if (tokenHash) {
+          console.log('Attempting to verify token_hash');
+          try {
+            const { data, error } = await supabase.auth.verifyOtp({
+              token_hash: tokenHash,
+              type: type === 'invite' ? 'magiclink' : type as any
+            });
+            
+            console.log('Token verification result:', { 
+              success: !error, 
+              hasSession: !!data?.session
+            });
+            
+            if (data?.session) {
+              console.log('Session established from token');
+              // Session is set, refresh the page to remove token parameters
+              window.history.replaceState({}, '', window.location.pathname + '?onboard=true');
+              return;
+            }
+          } catch (err) {
+            console.error('Token verification error:', err);
+          }
+        }
+        
+        // Check if user is already authenticated
+        const { data: { user } } = await supabase.auth.getUser();
+        console.log('Dashboard auth check result:', !!user);
+        
+        if (user) {
+          console.log('Dashboard confirmed authenticated user:', user.email);
+          // Authentication is confirmed - the dialog will be shown via the component
+        } else {
+          console.log('Dashboard detected unauthenticated user with onboard=true');
+          // User is not authenticated but has onboard=true - may need special handling
+        }
+      };
+      
+      checkAuthentication();
+    }
+  }, [searchParams]);
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/utils/supabase/server';
+import { createAdminClient } from '@/utils/supabase/admin';
 import { z } from 'zod';
 
 // Staff form schema
@@ -60,34 +61,39 @@ export async function createStaff(formData: StaffFormValues) {
       // Use existing user
       userId = existingUsers.id;
     } else {
-      // Create new user in auth.users
-      const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
-        email: validatedData.email,
-        password: Math.random().toString(36).slice(-8), // Generate random password
-        email_confirm: true,
-      });
+      // Using inviteUserByEmail to create user and send invitation in one step
+      const adminClient = createAdminClient();
       
-      if (authError || !authUser.user) {
-        return { error: `Failed to create user: ${authError?.message}` };
+      // This will create a user, trigger the handle_user_signup function, and send an invitation
+      // The database trigger will automatically create the user_profile entry
+      const inviteUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?onboard=true`;
+      console.log('Sending invitation with redirectTo:', inviteUrl);
+      
+      const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+        validatedData.email,
+        {
+          redirectTo: inviteUrl,
+          data: {
+            first_name: validatedData.firstName,
+            last_name: validatedData.lastName,
+            role: validatedData.role,
+            invited_by: user.id,
+            company_id: staffData.company_id,
+            clinic_id: validatedData.clinicId || null,
+            phone: validatedData.phone,
+            profile_picture: validatedData.profilePicture
+          }
+        }
+      );
+
+      if (inviteError || !inviteData?.user) {
+        console.error('Invitation error:', inviteError);
+        return { error: `Failed to invite user: ${inviteError?.message}` };
       }
       
-      userId = authUser.user.id;
+      userId = inviteData.user.id;
       
-      // Create user profile
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .insert({
-          id: userId,
-          first_name: validatedData.firstName,
-          last_name: validatedData.lastName,
-          email: validatedData.email,
-          phone: validatedData.phone,
-          profile_picture: validatedData.profilePicture,
-        });
-      
-      if (profileError) {
-        return { error: `Failed to create user profile: ${profileError.message}` };
-      }
+      // No need to manually create user_profile - the database trigger does this for us
     }
     
     // Create staff record
@@ -381,5 +387,76 @@ export async function getCompanyClinics() {
     return { data: clinics, success: true };
   } catch (error) {
     return { error: 'Failed to fetch clinics. Please try again.' };
+  }
+}
+
+/**
+ * Resend invitation to a staff member
+ */
+export async function resendStaffInvitation(staffId: string) {
+  const supabase = await createClient();
+  const adminClient = createAdminClient();
+  
+  // Get current user for audit trail
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    return { error: 'Unauthorized. Please sign in to resend invitations.' };
+  }
+  
+  try {
+    // Get staff member details
+    const { data: staffData, error: staffError } = await supabase
+      .from('staff')
+      .select(`
+        id,
+        user_id,
+        company_id,
+        clinic_id,
+        role,
+        user_profiles!inner(
+          first_name,
+          last_name,
+          email
+        )
+      `)
+      .eq('id', staffId)
+      .single();
+    
+    if (staffError || !staffData) {
+      return { error: 'Staff member not found' };
+    }
+    
+    // Send magic link invitation email using admin API
+    const { error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+      (staffData.user_profiles as any).email,
+      {
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?onboard=true`,
+        data: {
+          invited_by: user.id,
+          role: staffData.role,
+          staff_id: staffData.id
+        }
+      }
+    );
+
+    if (inviteError) {
+      console.error('Invitation error:', inviteError);
+      return { error: `Failed to send invitation: ${inviteError.message}` };
+    }
+    
+    // Update staff record to track invitation resent
+    await supabase
+      .from('staff')
+      .update({
+        updated_at: new Date().toISOString(),
+        updated_by: user.id
+      })
+      .eq('id', staffId);
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Error resending invitation:', error);
+    return { error: 'Failed to resend invitation. Please try again.' };
   }
 }

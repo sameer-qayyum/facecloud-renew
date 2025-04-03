@@ -12,6 +12,7 @@ import theme from '@/app/theme/theme';
 import CssBaseline from '@mui/material/CssBaseline';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Toaster } from '@/components/ui/toaster';
+import PasswordSetupDialog from '@/components/onboarding/password-dialog';
 
 export default function ProtectedLayout({
   children,
@@ -99,6 +100,7 @@ export default function ProtectedLayout({
           </div>
         </div>
         <Toaster />
+        <PasswordSetupDialog />
       </SidebarProvider>
     </ThemeProvider>
   );

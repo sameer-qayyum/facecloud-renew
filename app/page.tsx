@@ -1,8 +1,84 @@
+'use client';
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import Image from 'next/image';
+import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 export default function HomePage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [isRedirecting, setIsRedirecting] = useState(false);
+  const [message, setMessage] = useState('');
+
+  // Enhanced magic link handler - direct auth check + onboarding redirection
+  useEffect(() => {
+    const handleAuth = async () => {
+      const supabase = createClient();
+      
+      // If this is from a magic link invitation, process it
+      if (searchParams.has('token_hash') && searchParams.has('type')) {
+        setIsRedirecting(true);
+        setMessage('Processing your invitation...');
+        
+        const tokenHash = searchParams.get('token_hash');
+        const type = searchParams.get('type');
+        
+        console.log('Magic link detected:', { tokenHash, type });
+
+        try {
+          // First, verify the OTP token from the magic link
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash!,
+            type: type === 'invite' ? 'magiclink' : type as any,
+          });
+          
+          if (verifyError) {
+            console.error('Verification error:', verifyError);
+            setMessage('Authentication error: ' + verifyError.message);
+            return;
+          }
+          
+          // Check if user needs to set a password (new invitation)
+          const { data: { user } } = await supabase.auth.getUser();
+          
+          if (user && !user.last_sign_in_at) {
+            // New user who needs to complete onboarding
+            setMessage('Redirecting to account setup...');
+            router.push('/onboarding/setup');
+          } else {
+            // Returning user, send to dashboard
+            setMessage('Authentication successful, redirecting to dashboard...');
+            router.push('/dashboard');
+          }
+        } catch (err) {
+          console.error('Auth error:', err);
+          setMessage('An error occurred during authentication.');
+          setIsRedirecting(false);
+        }
+      }
+    };
+    
+    handleAuth();
+  }, [router, searchParams]);
+
+  // Show a loading indicator if we're about to redirect
+  if (isRedirecting) {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-center text-muted-foreground">
+            {message || 'Processing...'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* Navigation */}

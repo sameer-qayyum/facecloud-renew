@@ -26,7 +26,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={geistSans.className} suppressHydrationWarning>
-      <body className="bg-background text-foreground" style={{ background: '#fff' }}>
+      <body suppressHydrationWarning className="bg-background text-foreground" style={{ background: '#fff' }}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"
