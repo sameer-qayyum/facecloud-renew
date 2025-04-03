@@ -9,6 +9,7 @@ const nextConfig = {
   experimental: {
     optimizeCss: true,
     optimizePackageImports: ['lucide-react', '@mui/material'],
+    typedRoutes: false,
     serverActions: {
       bodySizeLimit: '2mb',
     },
@@ -19,7 +20,6 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   compress: true,
-  swcMinify: true,
 };
 
 module.exports = nextConfig;
