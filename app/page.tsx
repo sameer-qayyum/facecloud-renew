@@ -48,7 +48,7 @@ export default function HomePage() {
           if (user && !user.last_sign_in_at) {
             // New user who needs to complete onboarding
             setMessage('Redirecting to account setup...');
-            router.push('/onboarding/setup');
+            router.push('/dashboard?onboard=true');
           } else {
             // Returning user, send to dashboard
             setMessage('Authentication successful, redirecting to dashboard...');
