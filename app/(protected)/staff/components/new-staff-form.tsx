@@ -39,6 +39,7 @@ export interface StaffFormData {
     lastName: string;
     email: string;
     phone: string;
+    ahpraNumber?: string;
     profilePicture?: File;
     profilePictureUrl?: string;
   };
@@ -56,6 +57,7 @@ export interface StaffSubmissionData {
   lastName: string;
   email: string;
   phone: string;
+  ahpraNumber?: string;
   clinicId: string | null;
   role: StaffRole;
   profilePictureBase64?: string;
@@ -239,6 +241,7 @@ export function NewStaffForm({ staffId }: NewStaffFormProps) {
         lastName: formData.basicInfo.lastName,
         email: formData.basicInfo.email,
         phone: formData.basicInfo.phone,
+        ahpraNumber: formData.basicInfo.ahpraNumber,
         clinicId: formData.clinicAssignment.clinicId,
         role: formData.rolePermissions.role,
         active: !draft

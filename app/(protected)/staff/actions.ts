@@ -11,6 +11,7 @@ const staffFormSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email address'),
   phone: z.string().optional(),
+  ahpraNumber: z.string().optional(),
   role: z.enum(['owner', 'manager', 'doctor', 'nurse', 'therapist', 'admin']),
   clinicId: z.string().optional(),
   active: z.boolean().default(true),
@@ -90,6 +91,7 @@ export async function createStaff(formData: StaffFormValues) {
           last_name: validatedData.lastName,
           email: validatedData.email,
           phone: validatedData.phone || '',
+          ahpra_number: validatedData.ahpraNumber || '',
           profile_picture: validatedData.profilePicture || '',
         });
       

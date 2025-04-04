@@ -15,6 +15,7 @@ interface BasicInfoFormData {
   lastName: string;
   email: string;
   phone: string;
+  ahpraNumber?: string;
   profilePicture?: File;
   profilePictureUrl?: string;
 }
@@ -220,6 +221,24 @@ export function BasicInfoStep({
           className={errors.phone ? 'border-destructive' : ''}
           disabled={isLoading}
         />
+      </FormFieldWrapper>
+      
+      {/* AHPRA Number */}
+      <FormFieldWrapper error={isValidating ? errors.ahpraNumber : undefined}>
+        <Label htmlFor="ahpraNumber" className="text-sm font-medium">
+          AHPRA Number
+        </Label>
+        <Input
+          id="ahpraNumber"
+          placeholder="Enter AHPRA registration number"
+          value={formData.ahpraNumber || ''}
+          onChange={(e) => updateFormData({ ahpraNumber: e.target.value })}
+          className={errors.ahpraNumber ? 'border-destructive' : ''}
+          disabled={isLoading}
+        />
+        <p className="text-xs text-muted-foreground mt-1">
+          Australian Health Practitioner Regulation Agency registration number (if applicable)
+        </p>
       </FormFieldWrapper>
       
       {/* Continue Button */}
