@@ -32,7 +32,7 @@ interface ClinicAssignmentStepProps {
   onNext: () => void;
   onBack: () => void;
   isLoading: boolean;
-  clinics: { id: string; name: string }[];
+  clinics: { id: string; name: string; location_name?: string | null }[];
 }
 
 export function ClinicAssignmentStep({
@@ -116,7 +116,7 @@ export function ClinicAssignmentStep({
               <SelectItem value="none">No Specific Clinic (Access All)</SelectItem>
               {clinics.map((clinic) => (
                 <SelectItem key={clinic.id} value={clinic.id}>
-                  {clinic.name}
+                  {clinic.name}{clinic.location_name ? ` - ${clinic.location_name}` : ''}
                 </SelectItem>
               ))}
             </SelectContent>

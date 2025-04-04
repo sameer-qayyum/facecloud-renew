@@ -16,6 +16,7 @@ const staffFormSchema = z.object({
   clinicId: z.string().optional(),
   active: z.boolean().default(true),
   profilePicture: z.string().optional(),
+  profilePictureBase64: z.string().optional(),
 });
 
 export type StaffFormValues = z.infer<typeof staffFormSchema>;
@@ -25,6 +26,7 @@ export type StaffFormValues = z.infer<typeof staffFormSchema>;
  */
 export async function createStaff(formData: StaffFormValues) {
   const supabase = await createClient();
+  const adminClient = await createAdminClient();
   
   // Get current user for audit trail
   const { data: { user } } = await supabase.auth.getUser();
@@ -46,26 +48,63 @@ export async function createStaff(formData: StaffFormValues) {
       .single();
     
     if (!staffData) {
-      return { error: 'Company information not found' };
+      return { error: 'You must be associated with a company to create staff members.' };
     }
     
-    // Check if user with the email already exists in auth.users
+    let userId: string;
+    
+    // Check if user with this email already exists
     const { data: existingUser } = await supabase
       .from('user_profiles')
       .select('id')
       .eq('email', validatedData.email)
-      .single();
-    
-    let userId: string;
+      .maybeSingle();
     
     if (existingUser) {
       // User exists
       userId = existingUser.id;
     } else {
-      // User doesn't exist, create a new one with invitation
-      const adminClient = await createAdminClient();
+      // Process profile picture (if provided) before sending invitation
+      let profilePictureUrl = '';
+      if (validatedData.profilePictureBase64) {
+        try {
+          // Extract the file data and type from the base64 string
+          const base64Str = validatedData.profilePictureBase64;
+          const typeMatch = base64Str.match(/^data:([^;]+);base64,/);
+          
+          if (typeMatch) {
+            const mimeType = typeMatch[1];
+            const extension = mimeType.split('/')[1] || 'jpg';
+            const base64Data = base64Str.replace(/^data:[^;]+;base64,/, '');
+            
+            // Generate a unique filename
+            const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 15)}.${extension}`;
+            
+            // Upload to storage using admin client
+            const { error: uploadError } = await adminClient.storage
+              .from('profile-pictures')
+              .upload(fileName, Buffer.from(base64Data, 'base64'), {
+                contentType: mimeType,
+                upsert: true
+              });
+            
+            if (!uploadError) {
+              // Get public URL for the image
+              const { data: publicUrlData } = adminClient.storage
+                .from('profile-pictures')
+                .getPublicUrl(fileName);
+              
+              profilePictureUrl = publicUrlData?.publicUrl || '';
+              console.log('Uploaded profile picture:', profilePictureUrl);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to process profile picture:', error);
+          // Continue without profile picture
+        }
+      }
       
-      // Create a user in auth.users
+      // User doesn't exist, create a new one with invitation
       const { data: newUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
         validatedData.email,
         {
@@ -74,6 +113,8 @@ export async function createStaff(formData: StaffFormValues) {
             first_name: validatedData.firstName,
             last_name: validatedData.lastName,
             phone: validatedData.phone || '',
+            ahpra_number: validatedData.ahpraNumber || '',
+            profile_picture: profilePictureUrl, // Pass the uploaded URL
           },
         }
       );
@@ -82,23 +123,8 @@ export async function createStaff(formData: StaffFormValues) {
         return { error: 'Error inviting user: ' + inviteError?.message };
       }
       
-      // Create user profile
-      const { error: profileError } = await supabase
-        .from('user_profiles')
-        .insert({
-          id: newUser.user.id,
-          first_name: validatedData.firstName,
-          last_name: validatedData.lastName,
-          email: validatedData.email,
-          phone: validatedData.phone || '',
-          ahpra_number: validatedData.ahpraNumber || '',
-          profile_picture: validatedData.profilePicture || '',
-        });
-      
-      if (profileError) {
-        return { error: 'Error creating user profile: ' + profileError.message };
-      }
-      
+      // The user profile will be created by the database trigger
+      // using the metadata passed in the invitation
       userId = newUser.user.id;
     }
 
@@ -108,7 +134,7 @@ export async function createStaff(formData: StaffFormValues) {
       .select('id')
       .eq('user_id', userId)
       .eq('company_id', staffData.company_id)
-      .single();
+      .maybeSingle();
     
     let staffId: string;
     
@@ -118,8 +144,8 @@ export async function createStaff(formData: StaffFormValues) {
     }
     
     if (!existingStaff) {
-      // Create staff record if it doesn't exist
-      const { data: newStaff, error: staffError } = await supabase
+      // Create staff record if it doesn't exist - use admin client to bypass RLS
+      const { data: newStaff, error: staffError } = await adminClient
         .from('staff')
         .insert({
           user_id: userId,
@@ -152,8 +178,8 @@ export async function createStaff(formData: StaffFormValues) {
         return { error: 'Error finding location for clinic: ' + locationError?.message };
       }
       
-      // Create the staff assignment
-      const { error: assignmentError } = await supabase
+      // Create the staff assignment - use admin client to bypass RLS
+      const { error: assignmentError } = await adminClient
         .from('staff_assignments')
         .insert({
           staff_id: staffId,
@@ -464,7 +490,34 @@ export async function getCompanyClinics() {
       return { error: `Failed to fetch clinics: ${error.message}` };
     }
     
-    return { data: clinics, success: true };
+    // Get the first location for each clinic
+    const locationPromises = clinics.map(clinic => 
+      supabase
+        .from('locations')
+        .select('name')
+        .eq('clinic_id', clinic.id)
+        .maybeSingle()
+        .then(({ data }) => ({ 
+          clinicId: clinic.id, 
+          locationName: data?.name || null 
+        }))
+    );
+    
+    const locationResults = await Promise.all(locationPromises);
+    
+    // Create a map of clinic ID to location name
+    const locationMap = locationResults.reduce((map, item) => {
+      map[item.clinicId] = item.locationName;
+      return map;
+    }, {} as Record<string, string | null>);
+    
+    // Merge clinic and location data
+    const clinicsWithLocations = clinics.map(clinic => ({
+      ...clinic,
+      location_name: locationMap[clinic.id]
+    }));
+    
+    return { data: clinicsWithLocations, success: true };
   } catch (error) {
     return { error: 'Failed to fetch clinics. Please try again.' };
   }
