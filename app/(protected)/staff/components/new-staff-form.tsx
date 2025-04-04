@@ -92,6 +92,9 @@ export function NewStaffForm({ staffId }: NewStaffFormProps) {
   // Track the available clinics
   const [availableClinics, setAvailableClinics] = useState<{id: string, name: string}[]>([]);
   
+  // Track if we should skip the clinic assignment step
+  const [skipClinicStep, setSkipClinicStep] = useState<boolean>(false);
+  
   // Form data state
   const [formData, setFormData] = useState<StaffFormData>({
     basicInfo: {
@@ -164,7 +167,20 @@ export function NewStaffForm({ staffId }: NewStaffFormProps) {
         }
         
         if (response.data) {
-          setAvailableClinics(response.data);
+          const clinics = response.data;
+          setAvailableClinics(clinics);
+          
+          // If there's only one clinic, auto-assign it and skip the clinic step
+          if (clinics.length === 1 && !staffId) {
+            setFormData(prev => ({
+              ...prev,
+              clinicAssignment: {
+                ...prev.clinicAssignment,
+                clinicId: clinics[0].id
+              }
+            }));
+            setSkipClinicStep(true);
+          }
         }
       } catch (error) {
         console.error('Error fetching clinics:', error);
@@ -190,7 +206,12 @@ export function NewStaffForm({ staffId }: NewStaffFormProps) {
   const goToNextStep = () => {
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < STEPS.length) {
-      setCurrentStep(STEPS[nextIndex]);
+      // If the next step is the clinic step and we should skip it, go to the role step
+      if (skipClinicStep && STEPS[nextIndex] === 'clinic') {
+        setCurrentStep(STEPS[nextIndex + 1]);
+      } else {
+        setCurrentStep(STEPS[nextIndex]);
+      }
     }
   };
   
@@ -198,7 +219,12 @@ export function NewStaffForm({ staffId }: NewStaffFormProps) {
   const goToPreviousStep = () => {
     const prevIndex = currentStepIndex - 1;
     if (prevIndex >= 0) {
-      setCurrentStep(STEPS[prevIndex]);
+      // If the previous step is the clinic step and we should skip it, go to the basic step
+      if (skipClinicStep && STEPS[prevIndex] === 'clinic') {
+        setCurrentStep(STEPS[prevIndex - 1]);
+      } else {
+        setCurrentStep(STEPS[prevIndex]);
+      }
     }
   };
   
@@ -302,34 +328,40 @@ export function NewStaffForm({ staffId }: NewStaffFormProps) {
         className="w-full mb-6"
         onValueChange={(value) => setCurrentStep(value)}
       >
-        <TabsList className="grid grid-cols-4 w-full">
-          <TabsTrigger 
+        <TabsList className="flex w-full rounded-none h-14 p-1">
+          <TabsTrigger
             value="basic"
+            className="flex-1 rounded-sm data-[state=active]:bg-background h-full"
             disabled={isLoading}
-            data-active={currentStep === 'basic'}
           >
-            Basic Info
+            <span className="font-medium">1.</span> Basic Info
           </TabsTrigger>
-          <TabsTrigger 
-            value="clinic"
-            disabled={isLoading}
-            data-active={currentStep === 'clinic'}
-          >
-            Clinic
-          </TabsTrigger>
-          <TabsTrigger 
+          
+          {/* Only show clinic assignment step if there are multiple clinics */}
+          {!skipClinicStep && (
+            <TabsTrigger
+              value="clinic"
+              className="flex-1 rounded-sm data-[state=active]:bg-background h-full"
+              disabled={isLoading}
+            >
+              <span className="font-medium">2.</span> Clinic
+            </TabsTrigger>
+          )}
+          
+          <TabsTrigger
             value="role"
+            className="flex-1 rounded-sm data-[state=active]:bg-background h-full"
             disabled={isLoading}
-            data-active={currentStep === 'role'}
           >
-            Role
+            <span className="font-medium">{skipClinicStep ? '2' : '3'}.</span> Role
           </TabsTrigger>
-          <TabsTrigger 
+          
+          <TabsTrigger
             value="review"
+            className="flex-1 rounded-sm data-[state=active]:bg-background h-full"
             disabled={isLoading}
-            data-active={currentStep === 'review'}
           >
-            Review
+            <span className="font-medium">{skipClinicStep ? '3' : '4'}.</span> Review
           </TabsTrigger>
         </TabsList>
         
