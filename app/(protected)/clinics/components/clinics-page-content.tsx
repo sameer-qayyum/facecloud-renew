@@ -21,13 +21,33 @@ export default async function ClinicsPageContent() {
     .eq('user_id', user.id)
     .eq('active', true);
   
-  // User has no active staff records
-  if (!staffRecords || staffRecords.length === 0) {
-    return <EmptyState />;
-  }
+  console.log('Staff records for user:', staffRecords);
   
-  // Get the company_id from the first staff record
-  const company_id = staffRecords[0].company_id;
+  let company_id: string | null = null;
+  
+  // User has no active staff records, try checking company_owners
+  if (!staffRecords || staffRecords.length === 0) {
+    console.log('No staff records found, checking company ownership');
+    
+    const { data: ownedCompanies } = await supabase
+      .from('company_owners')
+      .select('company_id')
+      .eq('user_id', user.id);
+    
+    console.log('Company ownership records:', ownedCompanies);
+    
+    if (ownedCompanies && ownedCompanies.length > 0) {
+      company_id = ownedCompanies[0].company_id;
+      console.log('Found company_id from ownership:', company_id);
+    } else {
+      console.log('No company association found at all');
+      return <EmptyState />;
+    }
+  } else {
+    // Get the company_id from the first staff record
+    company_id = staffRecords[0].company_id;
+    console.log('Found company_id from staff record:', company_id);
+  }
   
   try {
     // Now fetch clinics for this company
@@ -46,6 +66,9 @@ export default async function ClinicsPageContent() {
       .eq('active', true)
       .order('created_at', { ascending: false });
     
+    console.log('Clinics query result:', clinics);
+    console.log('Clinics query error:', error);
+    
     if (error) {
       const errorMessage = `Error fetching clinics: ${error.message}`;
       console.error(errorMessage);
@@ -59,6 +82,7 @@ export default async function ClinicsPageContent() {
     }
     
     if (!clinics || clinics.length === 0) {
+      console.log('No clinics found for company_id:', company_id);
       return <EmptyState />;
     }
     

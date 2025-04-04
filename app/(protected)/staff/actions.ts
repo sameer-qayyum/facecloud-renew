@@ -20,7 +20,7 @@ const staffFormSchema = z.object({
 export type StaffFormValues = z.infer<typeof staffFormSchema>;
 
 /**
- * Create a new staff member
+ * Create a new staff member with support for the new staff assignments model
  */
 export async function createStaff(formData: StaffFormValues) {
   const supabase = await createClient();
@@ -49,133 +49,158 @@ export async function createStaff(formData: StaffFormValues) {
     }
     
     // Check if user with the email already exists in auth.users
-    const { data: existingUsers } = await supabase
+    const { data: existingUser } = await supabase
       .from('user_profiles')
-      .select('id, email')
+      .select('id')
       .eq('email', validatedData.email)
-      .maybeSingle();
+      .single();
     
     let userId: string;
     
-    if (existingUsers) {
-      // Use existing user
-      userId = existingUsers.id;
+    if (existingUser) {
+      // User exists
+      userId = existingUser.id;
     } else {
-      // Using inviteUserByEmail to create user and send invitation in one step
-      const adminClient = createAdminClient();
+      // User doesn't exist, create a new one with invitation
+      const adminClient = await createAdminClient();
       
-      // This will create a user, trigger the handle_user_signup function, and send an invitation
-      // The database trigger will automatically create the user_profile entry
-      const inviteUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/dashboard?onboard=true`;
-      console.log('Sending invitation with redirectTo:', inviteUrl);
-      
-      const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
+      // Create a user in auth.users
+      const { data: newUser, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(
         validatedData.email,
         {
-          redirectTo: inviteUrl,
+          redirectTo: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard?onboard=true`,
           data: {
             first_name: validatedData.firstName,
             last_name: validatedData.lastName,
-            role: validatedData.role,
-            invited_by: user.id,
-            company_id: staffData.company_id,
-            clinic_id: validatedData.clinicId || null,
-            phone: validatedData.phone,
-            profile_picture: validatedData.profilePicture
-          }
+            phone: validatedData.phone || '',
+          },
         }
       );
+      
+      if (inviteError || !newUser?.user) {
+        return { error: 'Error inviting user: ' + inviteError?.message };
+      }
+      
+      // Create user profile
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .insert({
+          id: newUser.user.id,
+          first_name: validatedData.firstName,
+          last_name: validatedData.lastName,
+          email: validatedData.email,
+          phone: validatedData.phone || '',
+          profile_picture: validatedData.profilePicture || '',
+        });
+      
+      if (profileError) {
+        return { error: 'Error creating user profile: ' + profileError.message };
+      }
+      
+      userId = newUser.user.id;
+    }
 
-      if (inviteError || !inviteData?.user) {
-        console.error('Invitation error:', inviteError);
-        return { error: `Failed to invite user: ${inviteError?.message}` };
-      }
-      
-      userId = inviteData.user.id;
-      
-      // No need to manually create user_profile - the database trigger does this for us
+    // Check if the staff record already exists for this company/user
+    const { data: existingStaff, error: existingStaffError } = await supabase
+      .from('staff')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('company_id', staffData.company_id)
+      .single();
+    
+    let staffId: string;
+    
+    if (existingStaffError && existingStaffError.code !== 'PGRST116') {
+      // Real error (not just "no rows returned")
+      return { error: 'Error checking existing staff: ' + existingStaffError.message };
     }
     
-    // If clinic is specified, get its locations
-    let locations = [];
-    if (validatedData.clinicId) {
-      const { data: clinicLocations, error: locationsError } = await supabase
-        .from('locations')
-        .select('id')
-        .eq('clinic_id', validatedData.clinicId);
-      
-      if (locationsError) {
-        console.error('Error fetching locations:', locationsError);
-        return { error: `Failed to fetch clinic locations: ${locationsError.message}` };
-      }
-      
-      locations = clinicLocations || [];
-    }
-    
-    // Create staff records - one for each location if clinic has locations
-    let staffRecords = [];
-    let newStaff = null;
-    
-    if (locations.length > 0) {
-      // Create multiple staff records, one for each location
-      const staffInserts = locations.map(location => ({
-        user_id: userId,
-        company_id: staffData.company_id,
-        clinic_id: validatedData.clinicId,
-        location_id: location.id,
-        role: validatedData.role,
-        active: validatedData.active,
-        created_by: user.id,
-      }));
-      
-      const { data: insertedStaff, error: bulkInsertError } = await supabase
-        .from('staff')
-        .insert(staffInserts)
-        .select();
-      
-      if (bulkInsertError) {
-        return { error: `Failed to create staff records: ${bulkInsertError.message}` };
-      }
-      
-      staffRecords = insertedStaff || [];
-      newStaff = staffRecords[0]; // Use the first record as the primary
-    } else {
-      // No locations or no clinic specified, create a single staff record without location
-      const { data: singleStaff, error: staffError } = await supabase
+    if (!existingStaff) {
+      // Create staff record if it doesn't exist
+      const { data: newStaff, error: staffError } = await supabase
         .from('staff')
         .insert({
           user_id: userId,
           company_id: staffData.company_id,
-          clinic_id: validatedData.clinicId || null,
-          location_id: null,
-          role: validatedData.role,
           active: validatedData.active,
           created_by: user.id,
         })
-        .select()
+        .select('id')
         .single();
       
-      if (staffError) {
-        return { error: `Failed to create staff record: ${staffError.message}` };
+      if (staffError || !newStaff) {
+        return { error: 'Error creating staff record: ' + staffError?.message };
       }
       
-      newStaff = singleStaff;
-      staffRecords = [singleStaff];
+      staffId = newStaff.id;
+    } else {
+      staffId = existingStaff.id;
     }
     
-    // Revalidate staff page to reflect the changes
+    // Now create the assignment for the specified location (clinic)
+    if (validatedData.clinicId) {
+      // Get the location ID for this clinic (assuming main location)
+      const { data: locationData, error: locationError } = await supabase
+        .from('locations')
+        .select('id')
+        .eq('clinic_id', validatedData.clinicId)
+        .single();
+      
+      if (locationError || !locationData) {
+        return { error: 'Error finding location for clinic: ' + locationError?.message };
+      }
+      
+      // Create the staff assignment
+      const { error: assignmentError } = await supabase
+        .from('staff_assignments')
+        .insert({
+          staff_id: staffId,
+          location_id: locationData.id,
+          role: validatedData.role,
+          primary_location: true, // First assignment is primary by default
+          created_by: user.id,
+        });
+      
+      if (assignmentError) {
+        return { error: 'Error creating staff assignment: ' + assignmentError.message };
+      }
+    }
+    
+    // If role is owner, ensure they have a company_owners record
+    if (validatedData.role === 'owner') {
+      // First check if the record already exists to avoid errors
+      const { data: existingOwner } = await supabase
+        .from('company_owners')
+        .select('id')
+        .eq('company_id', staffData.company_id)
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      // Only insert if it doesn't exist yet
+      if (!existingOwner) {
+        const { error: ownerError } = await supabase
+          .from('company_owners')
+          .insert({
+            company_id: staffData.company_id,
+            user_id: userId,
+            created_by: user.id,
+          });
+        
+        if (ownerError) {
+          return { error: 'Error adding company owner: ' + ownerError.message };
+        }
+      }
+    }
+    
+    // Revalidate pages
     revalidatePath('/staff');
     
-    return { 
-      data: newStaff, 
-      allRecords: staffRecords.length > 1 ? staffRecords : undefined,
-      success: true 
-    };
+    return { success: true };
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return { error: 'Validation error', details: error.errors };
+      return { error: 'Validation error', details: error.format() };
     }
-    return { error: 'Failed to create staff member. Please try again.' };
+    return { error: 'An unexpected error occurred' };
   }
 }
 

@@ -111,60 +111,6 @@ CREATE INDEX IF NOT EXISTS staff_assignments_active_idx ON staff_assignments(act
 ALTER TABLE staff_assignments ENABLE ROW LEVEL SECURITY;
 
 -----------------------------------------------
--- 🔒 RLS Policies for staff_assignments
------------------------------------------------
-
--- Company owners can manage all staff assignments
-CREATE POLICY "Company owners can manage staff assignments"
-ON staff_assignments FOR ALL
-USING (
-    EXISTS (
-        SELECT 1 FROM company_owners co
-        JOIN staff s ON s.company_id = co.company_id
-        WHERE s.id = staff_assignments.staff_id
-        AND co.user_id = auth.uid()
-    )
-);
-
--- Managers can manage staff assignments at their locations
-CREATE POLICY "Managers can manage staff assignments at their locations"
-ON staff_assignments FOR ALL
-USING (
-    EXISTS (
-        SELECT 1 FROM staff_assignments sa
-        JOIN staff s ON s.id = sa.staff_id
-        WHERE sa.location_id = staff_assignments.location_id
-        AND sa.role = 'manager'
-        AND s.user_id = auth.uid()
-        AND sa.active = TRUE
-    )
-);
-
--- Staff can view assignments at their locations
-CREATE POLICY "Staff can view assignments at their locations"
-ON staff_assignments FOR SELECT
-USING (
-    EXISTS (
-        SELECT 1 FROM staff_assignments sa
-        JOIN staff s ON s.id = sa.staff_id
-        WHERE sa.location_id = staff_assignments.location_id
-        AND s.user_id = auth.uid()
-        AND sa.active = TRUE
-    )
-);
-
--- Users can see their own assignments regardless of status
-CREATE POLICY "Users can view their own assignments"
-ON staff_assignments FOR SELECT
-USING (
-    EXISTS (
-        SELECT 1 FROM staff s
-        WHERE s.id = staff_assignments.staff_id
-        AND s.user_id = auth.uid()
-    )
-);
-
------------------------------------------------
 -- UDFs for Row Level Security
 -----------------------------------------------
 
@@ -202,6 +148,102 @@ BEGIN
     RETURN is_manager;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to check if current user is manager at given location
+CREATE OR REPLACE FUNCTION is_user_manager_at_location(location_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    is_manager BOOLEAN;
+BEGIN
+    SELECT EXISTS(
+        SELECT 1 
+        FROM staff s
+        JOIN staff_assignments sa ON s.id = sa.staff_id
+        WHERE s.user_id = auth.uid()
+        AND sa.location_id = is_user_manager_at_location.location_id
+        AND sa.role = 'manager'
+        AND sa.active = TRUE
+    ) INTO is_manager;
+    
+    RETURN is_manager;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to check if current user is assigned to given location
+CREATE OR REPLACE FUNCTION is_user_assigned_to_location(location_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    is_assigned BOOLEAN;
+BEGIN
+    SELECT EXISTS(
+        SELECT 1 
+        FROM staff s
+        JOIN staff_assignments sa ON s.id = sa.staff_id
+        WHERE s.user_id = auth.uid()
+        AND sa.location_id = is_user_assigned_to_location.location_id
+        AND sa.active = TRUE
+    ) INTO is_assigned;
+    
+    RETURN is_assigned;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Function to check if current user owns the staff record
+CREATE OR REPLACE FUNCTION is_users_staff_record(staff_id UUID)
+RETURNS BOOLEAN AS $$
+DECLARE
+    is_owner BOOLEAN;
+BEGIN
+    SELECT EXISTS(
+        SELECT 1 FROM staff
+        WHERE id = is_users_staff_record.staff_id
+        AND user_id = auth.uid()
+    ) INTO is_owner;
+    
+    RETURN is_owner;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-----------------------------------------------
+-- 🔒 RLS Policies for staff_assignments
+-----------------------------------------------
+
+-- First drop the policies with recursive references
+DROP POLICY IF EXISTS "Company owners can manage staff assignments" ON staff_assignments;
+DROP POLICY IF EXISTS "Managers can manage staff assignments at their locations" ON staff_assignments;
+DROP POLICY IF EXISTS "Staff can view assignments at their locations" ON staff_assignments;
+DROP POLICY IF EXISTS "Users can view their own assignments" ON staff_assignments;
+
+-- Company owners can manage all staff assignments (using staff's company_id)
+CREATE POLICY "Company owners can manage staff assignments"
+ON staff_assignments FOR ALL
+TO authenticated
+USING (
+    EXISTS (
+        SELECT 1 FROM company_owners co
+        JOIN staff s ON s.company_id = co.company_id
+        WHERE s.id = staff_assignments.staff_id
+        AND co.user_id = auth.uid()
+    )
+);
+
+-- Managers can manage staff assignments at their locations (using UDF)
+CREATE POLICY "Managers can manage staff assignments at locations"
+ON staff_assignments FOR ALL
+TO authenticated
+USING (is_user_manager_at_location(location_id));
+
+-- Staff can view assignments at their locations (using UDF)
+CREATE POLICY "Staff can view assignments at locations"
+ON staff_assignments FOR SELECT
+TO authenticated
+USING (is_user_assigned_to_location(location_id));
+
+-- Users can see their own assignments regardless of status (using UDF)
+CREATE POLICY "Users can view their own assignments"
+ON staff_assignments FOR SELECT
+TO authenticated
+USING (is_users_staff_record(staff_id));
 
 -----------------------------------------------
 -- 🔒 Updated RLS Policies for modified staff table

@@ -133,48 +133,69 @@ export async function createClinic(data: ClinicSubmissionData): Promise<{ succes
     // Upload logo if provided (optimize with smaller size for better performance)
     let logoUrl = null;
     if (data.clinic.logoBase64) {
-      // Extract the base64 data part (remove the data:image/xxx;base64, prefix)
-      const base64Data = data.clinic.logoBase64.split(',')[1];
-      
-      // Generate a unique file name using timestamp
-      const fileName = `clinic-logos/${company_id}/${Date.now()}.png`;
-      
-      // Upload to storage bucket
-      const { error: uploadError } = await supabase
-        .storage
-        .from('clinic-assets')
-        .upload(fileName, Buffer.from(base64Data, 'base64'), {
-          contentType: 'image/png',
-          cacheControl: '3600',
-          upsert: false
-        });
-      
-      if (uploadError) {
-        console.error('Error uploading logo:', uploadError);
-      } else {
-        // Get public URL
-        const { data: publicUrlData } = supabase
+      try {
+        // Extract the MIME type and base64 data
+        const [mimeTypeData, base64Data] = data.clinic.logoBase64.split(',');
+        const mimeType = mimeTypeData.match(/:(.*?);/)?.[1] || 'image/jpeg'; // Default to JPEG if can't detect
+        
+        // Determine file extension from MIME type
+        const fileExtension = mimeType.split('/')[1] || 'jpg';
+        
+        // Generate a unique file name using timestamp with proper extension
+        const fileName = `clinic-logos/${company_id}/${Date.now()}.${fileExtension}`;
+        
+        console.log('Uploading image with MIME type:', mimeType);
+        console.log('File path:', fileName);
+        
+        // Upload to storage bucket
+        const { error: uploadError } = await supabase
           .storage
           .from('clinic-assets')
-          .getPublicUrl(fileName);
+          .upload(fileName, Buffer.from(base64Data, 'base64'), {
+            contentType: mimeType,
+            cacheControl: '3600',
+            upsert: true // Set to true to overwrite if needed
+          });
         
-        logoUrl = publicUrlData.publicUrl;
+        if (uploadError) {
+          console.error('Error uploading logo:', uploadError);
+        } else {
+          // Get public URL
+          const { data: publicUrlData } = supabase
+            .storage
+            .from('clinic-assets')
+            .getPublicUrl(fileName);
+          
+          logoUrl = publicUrlData.publicUrl;
+          console.log('Logo uploaded successfully at:', logoUrl);
+        }
+      } catch (error) {
+        console.error('Error processing image:', error);
       }
     }
     
-    // 1. Create the clinic
+    // 1. Create the clinic with basic info
     const { data: clinic, error: clinicError } = await supabase
       .from('clinics')
       .insert({
         name: data.clinic.name,
-        company_id,
+        company_id: company_id,
         logo_url: logoUrl,
+        active: true,
         created_by: user.id,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       })
-      .select()
+      .select('id, name, company_id')
       .single();
-      
-    if (clinicError) throw clinicError;
+    
+    console.log('Clinic creation result:', clinic);
+    console.log('Clinic creation error:', clinicError);
+    
+    if (clinicError) {
+      console.error('Error creating clinic:', clinicError);
+      throw clinicError;
+    }
     
     // 2. Create the location with operating hours in JSONB format
     const { data: location, error: locationError } = await supabase
@@ -197,19 +218,55 @@ export async function createClinic(data: ClinicSubmissionData): Promise<{ succes
     
     if (locationError) throw locationError;
     
-    // 3. Add current user as staff with owner role for this clinic
-    const { error: staffError } = await supabase
+    // 3. Add current user as staff with owner role for this clinic (updated for new data model)
+    // This minimal staff creation is needed for clinic ownership, but other staff management
+    // should be done through the staff actions file
+    
+    // First, check if the user already has a staff record for this company
+    const { data: existingStaff, error: existingStaffError } = await supabase
       .from('staff')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('company_id', company_id)
+      .single();
+    
+    let staffId;
+    
+    if (existingStaffError && existingStaffError.code !== 'PGRST116') {
+      // Real error, not just "no rows returned"
+      throw existingStaffError;
+    }
+    
+    // If staff record doesn't exist for this company, create it
+    if (!existingStaff) {
+      const { data: newStaff, error: staffError } = await supabase
+        .from('staff')
+        .insert({
+          user_id: user.id,
+          company_id,
+          created_by: user.id,
+        })
+        .select('id')
+        .single();
+      
+      if (staffError) throw staffError;
+      staffId = newStaff.id;
+    } else {
+      staffId = existingStaff.id;
+    }
+    
+    // Create staff assignment for this location with owner role
+    const { error: assignmentError } = await supabase
+      .from('staff_assignments')
       .insert({
-        user_id: user.id,
-        company_id,
-        clinic_id: clinic.id,
+        staff_id: staffId,
         location_id: location.id,
         role: 'owner',
+        primary_location: true,
         created_by: user.id,
       });
     
-    if (staffError) throw staffError;
+    if (assignmentError) throw assignmentError;
     
     // Revalidate clinics page to show the new clinic
     revalidatePath('/clinics');
@@ -304,44 +361,56 @@ export async function updateClinic(clinicId: string, data: ClinicSubmissionData)
     // Upload logo if provided (optimize with smaller size for better performance)
     let logoUrl = null;
     if (data.clinic.logoBase64) {
-      // Extract the base64 data part (remove the data:image/xxx;base64, prefix)
-      const base64Data = data.clinic.logoBase64.split(',')[1];
-      
-      // Get company ID for the logo path
-      const { data: clinicData, error: clinicDataError } = await supabase
-        .from('clinics')
-        .select('company_id')
-        .eq('id', clinicId)
-        .single();
-      
-      if (clinicDataError || !clinicData) {
-        console.error('Error getting clinic data:', clinicDataError);
-        throw new Error('Failed to get clinic data for logo upload');
-      }
-      
-      // Generate a unique file name using timestamp
-      const fileName = `clinic-logos/${clinicData.company_id}/${Date.now()}.png`;
-      
-      // Upload to storage bucket
-      const { error: uploadError } = await supabase
-        .storage
-        .from('clinic-assets')
-        .upload(fileName, Buffer.from(base64Data, 'base64'), {
-          contentType: 'image/png',
-          cacheControl: '3600',
-          upsert: true // Override existing logo
-        });
-      
-      if (uploadError) {
-        console.error('Error uploading logo:', uploadError);
-      } else {
-        // Get public URL
-        const { data: publicUrlData } = supabase
+      try {
+        // Extract the MIME type and base64 data
+        const [mimeTypeData, base64Data] = data.clinic.logoBase64.split(',');
+        const mimeType = mimeTypeData.match(/:(.*?);/)?.[1] || 'image/jpeg'; // Default to JPEG if can't detect
+        
+        // Determine file extension from MIME type
+        const fileExtension = mimeType.split('/')[1] || 'jpg';
+        
+        // Get company ID for the logo path
+        const { data: clinicData, error: clinicDataError } = await supabase
+          .from('clinics')
+          .select('company_id')
+          .eq('id', clinicId)
+          .single();
+        
+        if (clinicDataError || !clinicData) {
+          console.error('Error getting clinic data:', clinicDataError);
+          throw new Error('Failed to get clinic data for logo upload');
+        }
+        
+        // Generate a unique file name using timestamp with proper extension
+        const fileName = `clinic-logos/${clinicData.company_id}/${Date.now()}.${fileExtension}`;
+        
+        console.log('Uploading image with MIME type:', mimeType);
+        console.log('File path:', fileName);
+        
+        // Upload to storage bucket
+        const { error: uploadError } = await supabase
           .storage
           .from('clinic-assets')
-          .getPublicUrl(fileName);
+          .upload(fileName, Buffer.from(base64Data, 'base64'), {
+            contentType: mimeType,
+            cacheControl: '3600',
+            upsert: true // Override existing logo
+          });
         
-        logoUrl = publicUrlData.publicUrl;
+        if (uploadError) {
+          console.error('Error uploading logo:', uploadError);
+        } else {
+          // Get public URL
+          const { data: publicUrlData } = supabase
+            .storage
+            .from('clinic-assets')
+            .getPublicUrl(fileName);
+          
+          logoUrl = publicUrlData.publicUrl;
+          console.log('Logo uploaded successfully at:', logoUrl);
+        }
+      } catch (error) {
+        console.error('Error processing image:', error);
       }
     }
     

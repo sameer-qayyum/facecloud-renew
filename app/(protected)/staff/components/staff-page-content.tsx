@@ -14,31 +14,37 @@ interface UserProfile {
   profile_picture: string | null;
 }
 
-interface ClinicInfo {
+interface LocationInfo {
+  id: string;
   name: string;
+  clinic: {
+    id: string;
+    name: string;
+  }
+}
+
+interface StaffAssignment {
+  location_id: string;
+  role: 'owner' | 'manager' | 'doctor' | 'nurse' | 'therapist' | 'admin';
+  primary_location: boolean;
+  location: LocationInfo;
 }
 
 interface StaffMember {
   id: string;
   user_id: string;
   company_id: string;
-  clinic_id: string | null;
-  location_id: string | null;
-  role: 'owner' | 'manager' | 'doctor' | 'nurse' | 'therapist' | 'admin';
   active: boolean;
   created_at: string;
   updated_at: string;
   user_profiles: UserProfile;
-  clinics: ClinicInfo | null;
+  staff_assignments: StaffAssignment[];
 }
 
 interface ProcessedStaffMember {
   id: string;
   user_id: string;
   company_id: string;
-  clinic_id: string | null;
-  location_id: string | null;
-  role: 'owner' | 'manager' | 'doctor' | 'nurse' | 'therapist' | 'admin';
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -47,7 +53,12 @@ interface ProcessedStaffMember {
   email: string;
   phone: string;
   profile_picture: string;
+  role: 'owner' | 'manager' | 'doctor' | 'nurse' | 'therapist' | 'admin';
+  clinic_id: string | null;
+  location_id: string | null;
   clinic_name: string;
+  location_names: string[];
+  assignment_count: number;
 }
 
 // Loading skeleton for staff table
@@ -72,20 +83,41 @@ export default async function StaffPageContent() {
     return <EmptyState />;
   }
   
-  // Get the user's company_id from their staff record
+  // Get the user's company_id from their staff record or company_owners
+  let company_id: string | null = null;
+  
+  // First check staff records
   const { data: staffRecords } = await supabase
     .from('staff')
-    .select('company_id, role')
+    .select('company_id')
     .eq('user_id', user.id)
     .eq('active', true);
+    
+  console.log('User staff records:', staffRecords);
   
-  // User has no active staff records
-  if (!staffRecords || staffRecords.length === 0) {
+  if (staffRecords && staffRecords.length > 0) {
+    company_id = staffRecords[0].company_id;
+  } else {
+    // If no staff records, check company_owners
+    const { data: companyOwners } = await supabase
+      .from('company_owners')
+      .select('company_id')
+      .eq('user_id', user.id);
+      
+    console.log('User company ownership:', companyOwners);
+    
+    if (companyOwners && companyOwners.length > 0) {
+      company_id = companyOwners[0].company_id;
+    }
+  }
+  
+  // User has no company association
+  if (!company_id) {
+    console.log('No company association found');
     return <EmptyState />;
   }
   
-  // Get the company_id from the first staff record
-  const company_id = staffRecords[0].company_id;
+  console.log('Using company_id:', company_id);
   
   try {
     // Fetch all clinics for this company for the clinic selector
@@ -96,16 +128,13 @@ export default async function StaffPageContent() {
       .eq('active', true)
       .order('name', { ascending: true });
     
-    // Now fetch staff members for this company
+    // Now fetch staff members for this company with the new data model
     const { data: staffMembers, error } = await supabase
       .from('staff')
       .select(`
         id, 
         user_id,
         company_id,
-        clinic_id,
-        location_id,
-        role,
         active,
         created_at,
         updated_at,
@@ -116,13 +145,26 @@ export default async function StaffPageContent() {
           phone,
           profile_picture
         ),
-        clinics:clinic_id(
-          name
+        staff_assignments(
+          location_id,
+          role,
+          primary_location,
+          location:locations(
+            id,
+            name,
+            clinic:clinics(
+              id,
+              name
+            )
+          )
         )
       `)
       .eq('company_id', company_id)
       .eq('active', true)
       .order('created_at', { ascending: false });
+    
+    console.log('Staff query result:', staffMembers);
+    console.log('Staff query error:', error);
     
     if (error) {
       const errorMessage = `Error fetching staff: ${error.message}`;
@@ -137,27 +179,45 @@ export default async function StaffPageContent() {
     }
     
     if (!staffMembers || staffMembers.length === 0) {
+      console.log('No staff found for company:', company_id);
       return <EmptyState />;
     }
     
-    // Process the staff data to include user profiles
-    const processedStaff: ProcessedStaffMember[] = (staffMembers as any[]).map(staff => ({
-      id: staff.id,
-      user_id: staff.user_id,
-      company_id: staff.company_id,
-      clinic_id: staff.clinic_id,
-      location_id: staff.location_id,
-      role: staff.role,
-      active: staff.active,
-      created_at: staff.created_at,
-      updated_at: staff.updated_at,
-      first_name: staff.user_profiles?.first_name || '',
-      last_name: staff.user_profiles?.last_name || '',
-      email: staff.user_profiles?.email || '',
-      phone: staff.user_profiles?.phone || '',
-      profile_picture: staff.user_profiles?.profile_picture || '',
-      clinic_name: staff.clinics?.name || 'No Clinic Assigned'
-    }));
+    // Process the staff data to include user profiles and primary assignment
+    const processedStaff: ProcessedStaffMember[] = (staffMembers as any[]).map(staff => {
+      // Get primary assignment or first assignment or default values
+      let primaryAssignment = staff.staff_assignments?.find((a: any) => a.primary_location) 
+        || (staff.staff_assignments?.length > 0 ? staff.staff_assignments[0] : null);
+      
+      // Get all location names for this staff member
+      const locationNames = staff.staff_assignments?.map((assignment: any) => 
+        assignment.location?.name
+      ).filter(Boolean) || [];
+      
+      return {
+        id: staff.id,
+        user_id: staff.user_id,
+        company_id: staff.company_id,
+        active: staff.active,
+        created_at: staff.created_at,
+        updated_at: staff.updated_at,
+        first_name: staff.user_profiles?.first_name || '',
+        last_name: staff.user_profiles?.last_name || '',
+        email: staff.user_profiles?.email || '',
+        phone: staff.user_profiles?.phone || '',
+        profile_picture: staff.user_profiles?.profile_picture || '',
+        // Use primary assignment data or defaults
+        role: primaryAssignment?.role || 'admin',
+        location_id: primaryAssignment?.location_id || null,
+        clinic_id: primaryAssignment?.location?.clinic?.id || null,
+        clinic_name: primaryAssignment?.location?.clinic?.name || 'No Clinic Assigned',
+        // Add all location assignments
+        location_names: locationNames,
+        assignment_count: staff.staff_assignments?.length || 0
+      };
+    });
+    
+    console.log('Processed staff data:', processedStaff);
     
     return (
       <div className="space-y-6">

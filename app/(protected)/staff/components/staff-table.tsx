@@ -58,6 +58,8 @@ interface StaffMember {
   phone: string;
   profile_picture: string | null;
   clinic_name: string;
+  location_names: string[]; // Array of locations this staff is assigned to
+  assignment_count: number; // Total number of assignments
 }
 
 interface StaffTableProps {
@@ -95,6 +97,13 @@ export function StaffTable({ staff }: StaffTableProps) {
   // Format role to be more readable
   const formatRole = useCallback((role: string) => {
     return role.charAt(0).toUpperCase() + role.slice(1);
+  }, []);
+  
+  // Format location names for display
+  const formatLocationsList = useCallback((locationNames: string[]) => {
+    if (!locationNames || locationNames.length === 0) return "No locations";
+    if (locationNames.length === 1) return locationNames[0];
+    return `${locationNames[0]} +${locationNames.length - 1} more`;
   }, []);
   
   // Get initials from name
@@ -313,6 +322,28 @@ export function StaffTable({ staff }: StaffTableProps) {
                     <span className="text-sm">{staffMember.clinic_name}</span>
                   </div>
                 </div>
+                
+                {/* Locations */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">Locations</div>
+                  <div className="flex items-center space-x-2">
+                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                    <div className="text-sm">
+                      {staffMember.location_names.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 items-center">
+                          <span>{formatLocationsList(staffMember.location_names)}</span>
+                          {staffMember.assignment_count > 1 && (
+                            <Badge variant="outline" className="text-xs">
+                              {staffMember.assignment_count}
+                            </Badge>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">No locations</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -340,6 +371,7 @@ export function StaffTable({ staff }: StaffTableProps) {
             <TableHead>Role</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Clinic</TableHead>
+            <TableHead>Locations</TableHead>
             <TableHead className="w-12"></TableHead>
           </TableRow>
         </TableHeader>
@@ -373,7 +405,29 @@ export function StaffTable({ staff }: StaffTableProps) {
                   Active
                 </Badge>
               </TableCell>
-              <TableCell>{staffMember.clinic_name}</TableCell>
+              <TableCell>
+                <div className="flex items-center">
+                  <Building className="h-4 w-4 mr-2 text-muted-foreground" />
+                  {staffMember.clinic_name}
+                </div>
+              </TableCell>
+              <TableCell>
+                <div className="flex items-center">
+                  <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                  {staffMember.assignment_count > 0 ? (
+                    <div className="flex items-center">
+                      <span>{formatLocationsList(staffMember.location_names)}</span>
+                      {staffMember.assignment_count > 1 && (
+                        <Badge variant="outline" className="ml-2 text-xs">
+                          {staffMember.assignment_count}
+                        </Badge>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">No locations</span>
+                  )}
+                </div>
+              </TableCell>
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -491,6 +545,33 @@ export function StaffTable({ staff }: StaffTableProps) {
                     <p className="text-sm font-medium text-muted-foreground mb-1">Assigned Clinic</p>
                     <p className="text-sm font-medium">{selectedStaff.clinic_name}</p>
                   </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-2 mt-4">
+                <div className="text-sm">
+                  <span className="font-medium text-muted-foreground">Role: </span>
+                  <span>{formatRole(selectedStaff.role)}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-muted-foreground">Clinic: </span>
+                  <span>{selectedStaff.clinic_name}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-muted-foreground">Locations: </span>
+                  <span>
+                    {selectedStaff.location_names.length > 0 ? (
+                      selectedStaff.location_names.join(', ')
+                    ) : (
+                      <span className="text-muted-foreground">No locations assigned</span>
+                    )}
+                  </span>
+                </div>
+                <div className="text-sm">
+                  <span className="font-medium text-muted-foreground">Status: </span>
+                  <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">
+                    Active
+                  </Badge>
                 </div>
               </div>
               
