@@ -60,7 +60,8 @@ export default async function ClinicsPageContent() {
         created_by,
         active,
         created_at,
-        updated_at
+        updated_at,
+        logo_url
       `)
       .eq('company_id', company_id)
       .eq('active', true)
@@ -126,6 +127,7 @@ export default async function ClinicsPageContent() {
       active: clinic.active,
       created_at: clinic.created_at,
       updated_at: clinic.updated_at,
+      logo_url: clinic.logo_url,
       location: locationsMap[clinic.id] || null
     }));
   

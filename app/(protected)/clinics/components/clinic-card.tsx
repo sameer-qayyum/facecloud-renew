@@ -54,6 +54,7 @@ interface Clinic {
   created_at: string;
   updated_at: string;
   location: Location | null;
+  logo_url?: string | null;
 }
 
 interface ClinicCardProps {
@@ -63,6 +64,7 @@ interface ClinicCardProps {
 export function ClinicCard({ clinic }: ClinicCardProps) {
   const router = useRouter();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   // Get metrics from our Zustand-based hook
   const { metrics, isLoading, error } = useClinicMetrics(clinic.id);
   
@@ -110,57 +112,77 @@ export function ClinicCard({ clinic }: ClinicCardProps) {
     <Card className="overflow-hidden hover:shadow-md transition-shadow duration-200">
       <CardHeader className="border-b bg-muted/20">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-xl">{metrics?.clinic?.name || clinic.name}</CardTitle>
-          <Badge variant={clinic.active ? "default" : "destructive"} className={clinic.active ? "bg-green-500 hover:bg-green-600" : ""}>
-            {clinic.active ? 'Active' : 'Draft'}
-          </Badge>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                <span className="sr-only">Open menu</span>
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-              <DropdownMenuItem asChild>
-                <Link href={`/clinics/add-clinic?id=${clinic.id}`} className="flex items-center gap-2 w-full cursor-pointer">
-                  <Edit className="h-4 w-4" /> Edit Clinic
-                </Link>
-              </DropdownMenuItem>
-              {!clinic.active && (
-                <DropdownMenuItem asChild>
-                  <Button variant="default" size="sm" className="w-full text-left" onClick={handleActivateClinic}>
-                    <Check className="h-4 w-4" /> Complete Setup
-                  </Button>
-                </DropdownMenuItem>
+          <div className="flex items-center gap-3">
+            <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded-md border bg-muted">
+              {!logoError && clinic.logo_url ? (
+                <img 
+                  src={clinic.logo_url} 
+                  alt={`${clinic.name} logo`} 
+                  className="h-full w-full object-contain"
+                  onError={() => setLogoError(true)}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-primary/10">
+                  <span className="font-semibold text-primary">
+                    {clinic.name.substring(0, 2).toUpperCase()}
+                  </span>
+                </div>
               )}
-              <DropdownMenuSeparator />
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
+            </div>
+            <CardTitle className="text-xl">{metrics?.clinic?.name || clinic.name}</CardTitle>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant={clinic.active ? "default" : "destructive"} className={clinic.active ? "bg-green-500 hover:bg-green-600" : ""}>
+              {clinic.active ? 'Active' : 'Draft'}
+            </Badge>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                  <span className="sr-only">Open menu</span>
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <Link href={`/clinics/add-clinic?id=${clinic.id}`} className="flex items-center gap-2 w-full cursor-pointer">
+                    <Edit className="h-4 w-4" /> Edit Clinic
+                  </Link>
+                </DropdownMenuItem>
+                {!clinic.active && (
                   <DropdownMenuItem asChild>
-                    <Button variant="destructive" size="sm" className="w-full text-left" disabled={isDeleting}>
-                      <Trash2 className="h-4 w-4" /> Delete Clinic
+                    <Button variant="default" size="sm" className="w-full text-left" onClick={handleActivateClinic}>
+                      <Check className="h-4 w-4" /> Complete Setup
                     </Button>
                   </DropdownMenuItem>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Clinic</AlertDialogTitle>
-                  </AlertDialogHeader>
-                  <AlertDialogDescription>
-                    Are you sure you want to delete this clinic?
-                  </AlertDialogDescription>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeleteClinic}>
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                )}
+                <DropdownMenuSeparator />
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <DropdownMenuItem asChild>
+                      <Button variant="destructive" size="sm" className="w-full text-left" disabled={isDeleting}>
+                        <Trash2 className="h-4 w-4" /> Delete Clinic
+                      </Button>
+                    </DropdownMenuItem>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Clinic</AlertDialogTitle>
+                    </AlertDialogHeader>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete this clinic?
+                    </AlertDialogDescription>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeleteClinic}>
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
         <CardDescription>
           {formatAddress(locationData)}

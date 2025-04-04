@@ -44,12 +44,13 @@ interface BasicInfoStepProps {
   data: {
     name?: string;
     logo?: File;
+    logoUrl?: string;
   };
   onChange: (values: { name: string; logo?: File }) => void;
 }
 
 export function BasicInfoStep({ data, onChange }: BasicInfoStepProps) {
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(data.logoUrl || null);
   
   // Create form with initial values
   const form = useForm<BasicInfoFormValues>({
@@ -84,10 +85,14 @@ export function BasicInfoStep({ data, onChange }: BasicInfoStepProps) {
         setLogoPreview(e.target?.result as string);
       };
       reader.readAsDataURL(logoFile);
-    } else {
+    } else if (!logoFile && !data.logoUrl) {
+      // Only clear the preview if we don't have a logoUrl from the server
       setLogoPreview(null);
+    } else if (!logoFile && data.logoUrl) {
+      // If there's no file but we have a logoUrl, use that
+      setLogoPreview(data.logoUrl);
     }
-  }, [form.watch('logo')]);
+  }, [form.watch('logo'), data.logoUrl]);
   
   // Handle file upload
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -101,6 +106,11 @@ export function BasicInfoStep({ data, onChange }: BasicInfoStepProps) {
   const clearLogo = () => {
     form.setValue('logo', undefined, { shouldValidate: true });
     setLogoPreview(null);
+    // Make sure we also clear in the parent component
+    onChange({
+      name: form.getValues('name'),
+      logo: undefined
+    });
   };
   
   return (
@@ -169,7 +179,7 @@ export function BasicInfoStep({ data, onChange }: BasicInfoStepProps) {
                           onClick={() => document.getElementById('logo-upload')?.click()}
                         >
                           <Upload className="h-4 w-4 mr-1.5" />
-                          Upload Logo
+                          {data.logoUrl ? 'Change Logo' : 'Upload Logo'}
                         </Button>
                         <input
                           id="logo-upload"

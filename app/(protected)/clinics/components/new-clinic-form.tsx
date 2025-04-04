@@ -485,10 +485,23 @@ export function NewClinicForm({ clinicId }: NewClinicFormProps) {
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2 }}
               >
-                <TabsContent value="basic" className="mt-0">
-                  <BasicInfoStep
-                    data={formData.clinic}
-                    onChange={updateClinicData}
+                <TabsContent value="basic" className="p-0 mt-0">
+                  <BasicInfoStep 
+                    data={{
+                      name: formData.clinic.name,
+                      logo: formData.clinic.logo,
+                      logoUrl: formData.clinic.logoUrl,
+                    }}
+                    onChange={(values) => {
+                      setFormData({
+                        ...formData,
+                        clinic: {
+                          ...formData.clinic,
+                          name: values.name,
+                          logo: values.logo,
+                        }
+                      });
+                    }}
                   />
                 </TabsContent>
                 
