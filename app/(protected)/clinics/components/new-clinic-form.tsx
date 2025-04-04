@@ -19,6 +19,15 @@ import { ReviewStep } from './clinic-form/review-step';
 import { createClinic, saveClinicDraft, updateClinic } from '../actions';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { createClient } from '@/utils/supabase/client';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Define contact info interface
 interface ContactInfo {
@@ -110,6 +119,13 @@ interface NewClinicFormProps {
   clinicId?: string | null;
 }
 
+interface ClinicTemplate {
+  id: string;
+  name: string;
+  logo_url?: string | null;
+  location_name?: string | null;
+}
+
 export function NewClinicForm({ clinicId }: NewClinicFormProps) {
   const router = useRouter();
   const { toast } = useToast();
@@ -121,6 +137,9 @@ export function NewClinicForm({ clinicId }: NewClinicFormProps) {
     clinicId: string;
     locationId: string;
   } | null>(null);
+  const [clinicTemplates, setClinicTemplates] = useState<ClinicTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const isEditMode = !!clinicId;
   
   // Initialize form data
@@ -209,53 +228,125 @@ export function NewClinicForm({ clinicId }: NewClinicFormProps) {
     loadClinicData();
   }, [clinicId, toast]);
 
-  // Set up real-time subscription when a clinic is created
+  // Load existing clinics for templates
   useEffect(() => {
-    if (!clinicCreated) return;
+    // Don't load templates if we're in edit mode
+    if (isEditMode) return;
     
-    let subscription: any;
+    const loadClinics = async () => {
+      try {
+        const supabase = createClient();
+        
+        // First get all clinics
+        const { data: clinics, error } = await supabase
+          .from('clinics')
+          .select('id, name, logo_url')
+          .eq('active', true)
+          .order('created_at', { ascending: false });
+          
+        if (error) throw error;
+        
+        if (clinics && clinics.length > 0) {
+          // Get the first location for each clinic
+          const locationPromises = clinics.map(clinic => 
+            supabase
+              .from('locations')
+              .select('name')
+              .eq('clinic_id', clinic.id)
+              .maybeSingle()
+              .then(({ data }) => ({ 
+                clinicId: clinic.id, 
+                locationName: data?.name || null 
+              }))
+          );
+          
+          const locationResults = await Promise.all(locationPromises);
+          
+          // Create a map of clinic ID to location name
+          const locationMap = locationResults.reduce((map, item) => {
+            map[item.clinicId] = item.locationName;
+            return map;
+          }, {} as Record<string, string | null>);
+          
+          // Merge clinic and location data
+          const clinicsWithLocations = clinics.map(clinic => ({
+            ...clinic,
+            location_name: locationMap[clinic.id]
+          }));
+          
+          setClinicTemplates(clinicsWithLocations);
+        }
+      } catch (error) {
+        console.error('Error loading clinic templates:', error);
+      }
+    };
     
-    const setupRealtimeSubscription = async () => {
+    loadClinics();
+  }, [isEditMode]);
+
+  // Load template data when a template is selected
+  const handleTemplateSelection = async (templateId: string) => {
+    if (!templateId || templateId === "none") {
+      setSelectedTemplateId("");
+      return;
+    }
+    
+    setSelectedTemplateId(templateId);
+    setIsLoadingTemplate(true);
+    
+    try {
       const supabase = createClient();
       
-      // Set up a subscription to listen for updates to the location
-      subscription = supabase
-        .channel('location-updates')
-        .on(
-          'postgres_changes',
-          {
-            event: 'UPDATE',
-            schema: 'public',
-            table: 'locations',
-            filter: `id=eq.${clinicCreated.locationId}`,
-          },
-          (payload) => {
-            console.log('Location updated:', payload);
-            
-            // If the location has been updated with geolocation, redirect to clinic page
-            if (payload.new && payload.new.latitude && payload.new.longitude) {
-              router.push(`/clinics/${clinicCreated.clinicId}/dashboard`);
-              
-              toast({
-                title: "Location geocoded",
-                description: "Your clinic's location has been geocoded successfully.",
-              });
-              
-              // Unsubscribe after redirect
-              subscription?.unsubscribe();
-            }
-          }
-        )
-        .subscribe();
-    };
-    
-    setupRealtimeSubscription();
-    
-    // Cleanup subscription on unmount
-    return () => {
-      subscription?.unsubscribe();
-    };
-  }, [clinicCreated, router]);
+      // Parallel fetching for ultra-fast template loading
+      const [clinicResponse, locationResponse] = await Promise.all([
+        supabase.from('clinics').select('*').eq('id', templateId).single(),
+        supabase.from('locations').select('*').eq('clinic_id', templateId).maybeSingle()
+      ]);
+        
+      if (clinicResponse.error) throw clinicResponse.error;
+      if (locationResponse.error) throw locationResponse.error;
+      
+      const clinicData = clinicResponse.data;
+      const locationData = locationResponse.data;
+      
+      // Populate form data with template data, but keep location and contact empty
+      setFormData({
+        clinic: {
+          name: '', // Don't copy name
+          logoUrl: clinicData.logo_url || '',
+        },
+        location: {
+          name: '',
+          suburb: '',
+          address: '',
+          state: undefined,
+          postcode: '',
+          country: 'Australia',
+        },
+        contact: {
+          email: '',
+          phone: '',
+        },
+        operatingHours: locationData?.opening_hours 
+          ? parseOpeningHoursFromDb(locationData.opening_hours)
+          : formData.operatingHours,
+      });
+      
+      toast({
+        title: 'Template Applied',
+        description: `Applied settings from "${clinicData.name}"`,
+      });
+    } catch (error) {
+      console.error('Error loading template:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load clinic template',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingTemplate(false);
+    }
+  };
 
   // Update clinic data
   const updateClinicData = (data: Partial<Clinic>) => {
@@ -443,6 +534,54 @@ export function NewClinicForm({ clinicId }: NewClinicFormProps) {
     }
   };
   
+  // Set up real-time subscription when a clinic is created
+  useEffect(() => {
+    if (!clinicCreated) return;
+    
+    let subscription: any;
+    
+    const setupRealtimeSubscription = async () => {
+      const supabase = createClient();
+      
+      // Set up a subscription to listen for updates to the location
+      subscription = supabase
+        .channel('location-updates')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'locations',
+            filter: `id=eq.${clinicCreated.locationId}`,
+          },
+          (payload) => {
+            console.log('Location updated:', payload);
+            
+            // If the location has been updated with geolocation, redirect to clinic page
+            if (payload.new && payload.new.latitude && payload.new.longitude) {
+              router.push(`/clinics/${clinicCreated.clinicId}/dashboard`);
+              
+              toast({
+                title: "Location geocoded",
+                description: "Your clinic's location has been geocoded successfully.",
+              });
+              
+              // Unsubscribe after redirect
+              subscription?.unsubscribe();
+            }
+          }
+        )
+        .subscribe();
+    };
+    
+    setupRealtimeSubscription();
+    
+    // Cleanup subscription on unmount
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, [clinicCreated, router]);
+
   // Loading state for edit mode
   if (isLoading) {
     return (
@@ -477,6 +616,38 @@ export function NewClinicForm({ clinicId }: NewClinicFormProps) {
           </TabsList>
           
           <div className="p-6">
+            {!isEditMode && clinicTemplates.length > 0 && (
+              <div className="mb-6 p-4 border rounded-md bg-muted/20">
+                <h3 className="text-base font-medium mb-2">Template from Existing Clinic</h3>
+                <p className="text-sm text-muted-foreground mb-3">
+                  You can start with a blank form or use an existing clinic as a template.
+                  This will copy the logo and operating hours, but not location or contact information.
+                </p>
+                <div className="flex items-center gap-3">
+                  <Select 
+                    disabled={isLoadingTemplate} 
+                    value={selectedTemplateId} 
+                    onValueChange={handleTemplateSelection}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a clinic as template (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Start Fresh</SelectItem>
+                      <SelectGroup>
+                        {clinicTemplates.map((clinic) => (
+                          <SelectItem key={clinic.id} value={clinic.id}>
+                            {clinic.name}{clinic.location_name ? ` - ${clinic.location_name}` : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  {isLoadingTemplate && <LoadingSpinner className="h-5 w-5 animate-spin" />}
+                </div>
+              </div>
+            )}
+
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentStep}
