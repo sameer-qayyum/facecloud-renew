@@ -229,18 +229,16 @@ export function StaffTable({ staff }: StaffTableProps) {
                   onClick={(e) => e.stopPropagation()}
                   aria-label={`Select ${staffMember.first_name}`}
                 />
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={staffMember.profile_picture || getFallbackImageUrl(staffMember.role)} />
+                  <AvatarFallback>{getInitials(staffMember.first_name, staffMember.last_name)}</AvatarFallback>
+                </Avatar>
                 <span className="font-medium text-primary">
                   {staffMember.first_name} {staffMember.last_name}
                 </span>
               </div>
               
               <div className="flex items-center gap-2">
-                <Badge 
-                  variant="secondary" 
-                  className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-100"
-                >
-                  Active
-                </Badge>
                 
                 {expandedRows.includes(staffMember.id) ? (
                   <ChevronRight className="h-5 w-5 text-muted-foreground transform rotate-90 transition-transform" />
@@ -300,17 +298,6 @@ export function StaffTable({ staff }: StaffTableProps) {
                   <div className="text-sm">-</div>
                 </div>
                 
-                {/* Status */}
-                <div>
-                  <div className="text-sm font-medium text-muted-foreground mb-1">Status</div>
-                  <Badge 
-                    variant="secondary" 
-                    className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-100"
-                  >
-                    Active
-                  </Badge>
-                </div>
-                
                 {/* Assigned Team */}
                 <div>
                   <div className="text-sm font-medium text-muted-foreground mb-1">Assigned Clinic</div>
@@ -365,11 +352,11 @@ export function StaffTable({ staff }: StaffTableProps) {
                 aria-label="Select all"
               />
             </TableHead>
+            <TableHead>Profile Picture</TableHead>
             <TableHead>Name</TableHead>
             <TableHead>Phone</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Role</TableHead>
-            <TableHead>Status</TableHead>
             <TableHead>Clinic</TableHead>
             <TableHead>Locations</TableHead>
             <TableHead className="w-12"></TableHead>
@@ -386,6 +373,12 @@ export function StaffTable({ staff }: StaffTableProps) {
                 />
               </TableCell>
               <TableCell>
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={staffMember.profile_picture || getFallbackImageUrl(staffMember.role)} />
+                  <AvatarFallback>{getInitials(staffMember.first_name, staffMember.last_name)}</AvatarFallback>
+                </Avatar>
+              </TableCell>
+              <TableCell>
                 <div className="font-medium text-primary">
                   {staffMember.first_name} {staffMember.last_name}
                 </div>
@@ -393,16 +386,8 @@ export function StaffTable({ staff }: StaffTableProps) {
               <TableCell>{staffMember.phone || "-"}</TableCell>
               <TableCell>{staffMember.email}</TableCell>
               <TableCell>
-                <Badge 
-                  variant="outline" 
-                  className={`border-2 ${getRoleColor(staffMember.role).replace('bg-', 'border-').replace('hover:bg-', 'text-')} bg-transparent`}
-                >
+                <Badge className={`${getRoleColor(staffMember.role)}`}>
                   {formatRole(staffMember.role)}
-                </Badge>
-              </TableCell>
-              <TableCell>
-                <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-100">
-                  Active
                 </Badge>
               </TableCell>
               <TableCell>
@@ -566,12 +551,6 @@ export function StaffTable({ staff }: StaffTableProps) {
                       <span className="text-muted-foreground">No locations assigned</span>
                     )}
                   </span>
-                </div>
-                <div className="text-sm">
-                  <span className="font-medium text-muted-foreground">Status: </span>
-                  <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">
-                    Active
-                  </Badge>
                 </div>
               </div>
               
