@@ -50,6 +50,18 @@ interface ProcessedStaffMember {
   clinic_name: string;
 }
 
+// Loading skeleton for staff table
+const StaffTableSkeleton = () => (
+  <div className="space-y-4">
+    <div className="h-10 w-full bg-muted rounded animate-pulse" />
+    <div className="space-y-2">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} className="h-16 w-full bg-muted rounded animate-pulse" />
+      ))}
+    </div>
+  </div>
+);
+
 export default async function StaffPageContent() {
   const supabase = await createClient();
   
@@ -146,13 +158,12 @@ export default async function StaffPageContent() {
       profile_picture: staff.user_profiles?.profile_picture || '',
       clinic_name: staff.clinics?.name || 'No Clinic Assigned'
     }));
-  
+    
     return (
       <div className="space-y-6">
         {clinics && clinics.length > 1 && (
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold tracking-tight">Staff</h2>
-            <ClinicSelector clinics={clinics} />
+          <div>
+            {/* Clinic filter UI goes here */}
           </div>
         )}
         

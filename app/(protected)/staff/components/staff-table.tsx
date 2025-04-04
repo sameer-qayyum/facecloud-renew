@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useTransition, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ChevronsUpDown, Edit, Trash2, Phone, Mail, 
@@ -71,13 +71,17 @@ export function StaffTable({ staff }: StaffTableProps) {
   const [selectedStaff, setSelectedStaff] = useState<StaffMember | null>(null);
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
   const [expandedRows, setExpandedRows] = useState<string[]>([]);
+  const [isPending, startTransition] = useTransition();
+  
+  // Memoize data to reduce re-renders
+  const memoizedStaff = useMemo(() => staff, [staff]);
   
   // Handle staff deletion
   const handleDeleteStaff = async () => {
     if (!staffToDelete) return;
     
+    setIsDeleting(true);
     try {
-      setIsDeleting(true);
       await softDeleteStaff(staffToDelete);
       router.refresh();
     } catch (error) {
@@ -87,21 +91,21 @@ export function StaffTable({ staff }: StaffTableProps) {
       setStaffToDelete(null);
     }
   };
-  
-  // Format role for display with proper capitalization
-  const formatRole = (role: string) => {
+
+  // Format role to be more readable
+  const formatRole = useCallback((role: string) => {
     return role.charAt(0).toUpperCase() + role.slice(1);
-  };
+  }, []);
   
-  // Get initials for avatar fallback
-  const getInitials = (firstName: string, lastName: string) => {
+  // Get initials from name
+  const getInitials = useCallback((firstName: string, lastName: string) => {
     const firstInitial = firstName ? firstName[0] : '';
     const lastInitial = lastName ? lastName[0] : '';
     return `${firstInitial}${lastInitial}`.toUpperCase();
-  };
+  }, []);
   
-  // Get a role-specific color for the badge
-  const getRoleColor = (role: string) => {
+  // Get role color for badge
+  const getRoleColor = useCallback((role: string) => {
     switch (role) {
       case 'owner':
         return 'bg-purple-500 hover:bg-purple-600';
@@ -118,292 +122,294 @@ export function StaffTable({ staff }: StaffTableProps) {
       default:
         return '';
     }
-  };
+  }, []);
   
   // Get a fallback image URL based on role
-  const getFallbackImageUrl = (role: string) => {
+  const getFallbackImageUrl = useCallback((role: string) => {
+    // Static images instead of dynamic Unsplash requests for better performance
     switch (role) {
       case 'doctor':
-        return 'https://images.unsplash.com/vector-1742560923531-0c11d1fb45f4?q=80&w=2360&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
+        return '/images/avatars/doctor.jpg';
       case 'nurse':
-        return 'https://images.unsplash.com/vector-1742560923525-5ae39a265350?q=80&w=2360&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
+        return '/images/avatars/nurse.jpg';
       case 'therapist':
-        return 'https://source.unsplash.com/featured/?therapist,wellness,healthcare';
+        return '/images/avatars/therapist.jpg';
       case 'manager':
-        return 'https://source.unsplash.com/featured/?manager,business,professional';
+        return '/images/avatars/manager.jpg';
       case 'admin':
-        return 'https://source.unsplash.com/featured/?admin,office,professional';
+        return '/images/avatars/admin.jpg';
       case 'owner':
-        return 'https://images.unsplash.com/photo-1595475716260-0f2c35f5a40f?q=80&w=2069&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
+        return '/images/avatars/owner.jpg';
       default:
-        return 'https://source.unsplash.com/featured/?person,professional';
+        return '/images/avatars/default.jpg';
     }
-  };
+  }, []);
+
+  // Toggle selection for a row
+  const toggleRowSelection = useCallback((id: string) => {
+    startTransition(() => {
+      setSelectedRows(prev => 
+        prev.includes(id) 
+          ? prev.filter(rowId => rowId !== id) 
+          : [...prev, id]
+      );
+    });
+  }, []);
   
   // Toggle expanded state for a row
-  const toggleRowExpand = (id: string, event: React.MouseEvent) => {
+  const toggleRowExpand = useCallback((id: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    setExpandedRows(prev => 
-      prev.includes(id) 
-        ? prev.filter(rowId => rowId !== id) 
-        : [...prev, id]
-    );
-  };
+    startTransition(() => {
+      setExpandedRows(prev => 
+        prev.includes(id) 
+          ? prev.filter(rowId => rowId !== id) 
+          : [...prev, id]
+      );
+    });
+  }, []);
 
-  const openStaffDetails = (staff: StaffMember) => {
+  const openStaffDetails = useCallback((staff: StaffMember) => {
     setSelectedStaff(staff);
-  };
+  }, []);
   
-  const toggleRowSelection = (id: string) => {
-    setSelectedRows(prev => 
-      prev.includes(id) 
-        ? prev.filter(rowId => rowId !== id) 
-        : [...prev, id]
-    );
-  };
-
-  const toggleAllRows = () => {
-    if (selectedRows.length === staff.length) {
+  const toggleAllRows = useCallback(() => {
+    if (selectedRows.length === memoizedStaff.length) {
       setSelectedRows([]);
     } else {
-      setSelectedRows(staff.map(s => s.id));
+      setSelectedRows(memoizedStaff.map(s => s.id));
     }
-  };
+  }, [memoizedStaff, selectedRows]);
 
   // Render mobile UI
-  const renderMobileUI = () => {
-    return (
-      <div className="md:hidden">
-        <div className="relative flex items-center mb-3">
-          <div className="relative w-full">
-            <input
-              type="text"
-              placeholder="Search by client name, client ID or phone number"
-              className="w-full h-10 pl-9 pr-4 py-2 bg-background border rounded-md text-sm"
-            />
-            <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
-              <svg className="w-4 h-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M19 19L13 13M15 8C15 12.4183 11.4183 16 7 16C2.58172 16 -1 12.4183 -1 8C-1 3.58172 2.58172 0 7 0C11.4183 0 15 3.58172 15 8Z" strokeLinecap="round" />
-              </svg>
-            </div>
-          </div>
-          <Button variant="default" size="icon" className="ml-2 h-10 w-10 bg-primary">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M3 7H21" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M6 12H18" stroke="white" strokeWidth="2" strokeLinecap="round"/>
-              <path d="M10 17H14" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+  const mobileUI = useMemo(() => (
+    <div className="md:hidden">
+      <div className="relative flex items-center mb-3">
+        <div className="relative w-full">
+          <input
+            type="text"
+            placeholder="Search by client name, client ID or phone number"
+            className="w-full h-10 pl-9 pr-4 py-2 bg-background border rounded-md text-sm"
+          />
+          <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+            <svg className="w-4 h-4 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 19L13 13M15 8C15 12.4183 11.4183 16 7 16C2.58172 16 -1 12.4183 -1 8C-1 3.58172 2.58172 0 7 0C11.4183 0 15 3.58172 15 8Z" strokeLinecap="round" />
             </svg>
-          </Button>
+          </div>
         </div>
-      
-        <div className="space-y-1 bg-background border rounded-md overflow-hidden">
-          {staff.map(staffMember => (
-            <div key={staffMember.id} className="border-b last:border-b-0">
-              {/* Header row - always visible */}
-              <div 
-                className="flex items-center px-4 py-3 justify-between cursor-pointer"
-                onClick={(e) => toggleRowExpand(staffMember.id, e)}
-              >
-                <div className="flex items-center gap-2">
-                  <Checkbox 
-                    checked={selectedRows.includes(staffMember.id)}
-                    onCheckedChange={() => toggleRowSelection(staffMember.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    aria-label={`Select ${staffMember.first_name}`}
-                  />
-                  <span className="font-medium text-primary">
-                    {staffMember.first_name} {staffMember.last_name}
-                  </span>
+        <Button variant="default" size="icon" className="ml-2 h-10 w-10 bg-primary">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 7H21" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M6 12H18" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+            <path d="M10 17H14" stroke="white" strokeWidth="2" strokeLinecap="round"/>
+          </svg>
+        </Button>
+      </div>
+    
+      <div className="space-y-1 bg-background border rounded-md overflow-hidden">
+        {memoizedStaff.map(staffMember => (
+          <div key={staffMember.id} className="border-b last:border-b-0">
+            {/* Header row - always visible */}
+            <div 
+              className="flex items-center px-4 py-3 justify-between cursor-pointer"
+              onClick={(e) => toggleRowExpand(staffMember.id, e)}
+            >
+              <div className="flex items-center gap-2">
+                <Checkbox 
+                  checked={selectedRows.includes(staffMember.id)}
+                  onCheckedChange={() => toggleRowSelection(staffMember.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  aria-label={`Select ${staffMember.first_name}`}
+                />
+                <span className="font-medium text-primary">
+                  {staffMember.first_name} {staffMember.last_name}
+                </span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Badge 
+                  variant="secondary" 
+                  className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-100"
+                >
+                  Active
+                </Badge>
+                
+                {expandedRows.includes(staffMember.id) ? (
+                  <ChevronRight className="h-5 w-5 text-muted-foreground transform rotate-90 transition-transform" />
+                ) : (
+                  <ChevronRight className="h-5 w-5 text-muted-foreground transform transition-transform" />
+                )}
+                
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 ml-1">
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem 
+                      className="cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/staff/edit-staff?id=${staffMember.id}`);
+                      }}
+                    >
+                      <Edit className="h-4 w-4 mr-2" /> Edit Staff
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-destructive cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setStaffToDelete(staffMember.id);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" /> Remove Staff
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+            
+            {/* Expanded content */}
+            {expandedRows.includes(staffMember.id) && (
+              <div className="px-4 pb-4 space-y-4 border-t border-muted/40 bg-muted/5">
+                {/* Phone */}
+                <div className="pt-4">
+                  <div className="text-sm font-medium text-muted-foreground mb-1">Phone number</div>
+                  <div className="text-sm font-medium">{staffMember.phone || "-"}</div>
                 </div>
                 
-                <div className="flex items-center gap-2">
+                {/* Email */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">Email</div>
+                  <a href={`mailto:${staffMember.email}`} className="text-sm font-medium text-primary">{staffMember.email}</a>
+                </div>
+                
+                {/* Tags */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">Tags</div>
+                  <div className="text-sm">-</div>
+                </div>
+                
+                {/* Status */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">Status</div>
                   <Badge 
                     variant="secondary" 
                     className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-100"
                   >
                     Active
                   </Badge>
-                  
-                  {expandedRows.includes(staffMember.id) ? (
-                    <ChevronRight className="h-5 w-5 text-muted-foreground transform rotate-90 transition-transform" />
-                  ) : (
-                    <ChevronRight className="h-5 w-5 text-muted-foreground transform transition-transform" />
-                  )}
-                  
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 ml-1">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem 
-                        className="cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/staff/edit-staff?id=${staffMember.id}`);
-                        }}
-                      >
-                        <Edit className="h-4 w-4 mr-2" /> Edit Staff
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-destructive cursor-pointer"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setStaffToDelete(staffMember.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" /> Remove Staff
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                </div>
+                
+                {/* Assigned Team */}
+                <div>
+                  <div className="text-sm font-medium text-muted-foreground mb-1">Assigned Clinic</div>
+                  <div className="flex items-center space-x-2">
+                    <Avatar className="h-6 w-6">
+                      <AvatarImage src={getFallbackImageUrl(staffMember.role)} />
+                      <AvatarFallback>{staffMember.clinic_name.substring(0, 2).toUpperCase()}</AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm">{staffMember.clinic_name}</span>
+                  </div>
                 </div>
               </div>
-              
-              {/* Expanded content */}
-              {expandedRows.includes(staffMember.id) && (
-                <div className="px-4 pb-4 space-y-4 border-t border-muted/40 bg-muted/5">
-                  {/* Phone */}
-                  <div className="pt-4">
-                    <div className="text-sm font-medium text-muted-foreground mb-1">Phone number</div>
-                    <div className="text-sm font-medium">{staffMember.phone || "-"}</div>
-                  </div>
-                  
-                  {/* Email */}
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-1">Email</div>
-                    <a href={`mailto:${staffMember.email}`} className="text-sm font-medium text-primary">{staffMember.email}</a>
-                  </div>
-                  
-                  {/* Tags */}
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-1">Tags</div>
-                    <div className="text-sm">-</div>
-                  </div>
-                  
-                  {/* Status */}
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-1">Status</div>
-                    <Badge 
-                      variant="secondary" 
-                      className="bg-green-100 text-green-800 hover:bg-green-100 dark:bg-green-900 dark:text-green-100"
-                    >
-                      Active
-                    </Badge>
-                  </div>
-                  
-                  {/* Assigned Team */}
-                  <div>
-                    <div className="text-sm font-medium text-muted-foreground mb-1">Assigned Clinic</div>
-                    <div className="flex items-center space-x-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={getFallbackImageUrl(staffMember.role)} />
-                        <AvatarFallback>{staffMember.clinic_name.substring(0, 2).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <span className="text-sm">{staffMember.clinic_name}</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+            )}
+          </div>
+        ))}
       </div>
-    );
-  };
+    </div>
+  ), [memoizedStaff, selectedRows, expandedRows, toggleRowExpand, toggleRowSelection, getFallbackImageUrl]);
 
   // Render desktop UI
-  const renderDesktopUI = () => {
-    return (
-      <div className="hidden md:block border rounded-lg bg-background overflow-hidden">
-        <Table>
-          <TableHeader className="bg-muted/30">
-            <TableRow>
-              <TableHead className="w-12">
+  const desktopUI = useMemo(() => (
+    <div className="hidden md:block border rounded-lg bg-background overflow-hidden">
+      <Table>
+        <TableHeader className="bg-muted/30">
+          <TableRow>
+            <TableHead className="w-12">
+              <Checkbox 
+                checked={selectedRows.length === memoizedStaff.length && memoizedStaff.length > 0}
+                onCheckedChange={toggleAllRows}
+                aria-label="Select all"
+              />
+            </TableHead>
+            <TableHead>Name</TableHead>
+            <TableHead>Phone</TableHead>
+            <TableHead>Email</TableHead>
+            <TableHead>Role</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Clinic</TableHead>
+            <TableHead className="w-12"></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {memoizedStaff.map(staffMember => (
+            <TableRow key={staffMember.id}>
+              <TableCell>
                 <Checkbox 
-                  checked={selectedRows.length === staff.length && staff.length > 0}
-                  onCheckedChange={toggleAllRows}
-                  aria-label="Select all"
+                  checked={selectedRows.includes(staffMember.id)}
+                  onCheckedChange={() => toggleRowSelection(staffMember.id)}
+                  aria-label={`Select ${staffMember.first_name}`}
                 />
-              </TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Clinic</TableHead>
-              <TableHead className="w-12"></TableHead>
+              </TableCell>
+              <TableCell>
+                <div className="font-medium text-primary">
+                  {staffMember.first_name} {staffMember.last_name}
+                </div>
+              </TableCell>
+              <TableCell>{staffMember.phone || "-"}</TableCell>
+              <TableCell>{staffMember.email}</TableCell>
+              <TableCell>
+                <Badge 
+                  variant="outline" 
+                  className={`border-2 ${getRoleColor(staffMember.role).replace('bg-', 'border-').replace('hover:bg-', 'text-')} bg-transparent`}
+                >
+                  {formatRole(staffMember.role)}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-100">
+                  Active
+                </Badge>
+              </TableCell>
+              <TableCell>{staffMember.clinic_name}</TableCell>
+              <TableCell>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <span className="sr-only">Open menu</span>
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem 
+                      className="cursor-pointer"
+                      onClick={() => router.push(`/staff/edit-staff?id=${staffMember.id}`)}
+                    >
+                      <Edit className="h-4 w-4 mr-2" /> Edit Staff
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      className="text-destructive cursor-pointer"
+                      onClick={() => setStaffToDelete(staffMember.id)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" /> Remove Staff
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            {staff.map(staffMember => (
-              <TableRow key={staffMember.id}>
-                <TableCell>
-                  <Checkbox 
-                    checked={selectedRows.includes(staffMember.id)}
-                    onCheckedChange={() => toggleRowSelection(staffMember.id)}
-                    aria-label={`Select ${staffMember.first_name}`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <div className="font-medium text-primary">
-                    {staffMember.first_name} {staffMember.last_name}
-                  </div>
-                </TableCell>
-                <TableCell>{staffMember.phone || "-"}</TableCell>
-                <TableCell>{staffMember.email}</TableCell>
-                <TableCell>
-                  <Badge 
-                    variant="outline" 
-                    className={`border-2 ${getRoleColor(staffMember.role).replace('bg-', 'border-').replace('hover:bg-', 'text-')} bg-transparent`}
-                  >
-                    {formatRole(staffMember.role)}
-                  </Badge>
-                </TableCell>
-                <TableCell>
-                  <Badge variant="secondary" className="bg-green-100 text-green-800 hover:bg-green-200 dark:bg-green-900 dark:text-green-100">
-                    Active
-                  </Badge>
-                </TableCell>
-                <TableCell>{staffMember.clinic_name}</TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <span className="sr-only">Open menu</span>
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem 
-                        className="cursor-pointer"
-                        onClick={() => router.push(`/staff/edit-staff?id=${staffMember.id}`)}
-                      >
-                        <Edit className="h-4 w-4 mr-2" /> Edit Staff
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-destructive cursor-pointer"
-                        onClick={() => setStaffToDelete(staffMember.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" /> Remove Staff
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    );
-  };
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  ), [memoizedStaff, selectedRows, toggleRowSelection, toggleAllRows, getRoleColor, formatRole]);
 
   return (
     <div className="space-y-4">
-      {renderDesktopUI()}
-      {renderMobileUI()}
+      {desktopUI}
+      {mobileUI}
       
       {/* Delete confirmation dialog */}
       <AlertDialog open={!!staffToDelete} onOpenChange={(open) => !open && setStaffToDelete(null)}>

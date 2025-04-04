@@ -1,0 +1,10 @@
+Add static avatar images here:
+- doctor.jpg
+- nurse.jpg
+- therapist.jpg
+- manager.jpg
+- admin.jpg
+- owner.jpg
+- default.jpg
+
+These will be used as fallback avatar images for staff members without profile pictures.

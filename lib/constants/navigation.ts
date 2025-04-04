@@ -10,6 +10,7 @@ import {
   User,
   Settings,
   HelpCircle,
+  LogOut,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -84,6 +85,12 @@ export const secondaryNavItems: NavItem[] = [
     title: 'Help & Support',
     href: '/help',
     icon: HelpCircle,
+    roles: ['owner', 'manager', 'doctor', 'nurse', 'therapist', 'admin'],
+  },
+  {
+    title: 'Sign Out',
+    href: '/sign-out',
+    icon: LogOut,
     roles: ['owner', 'manager', 'doctor', 'nurse', 'therapist', 'admin'],
   },
 ];
