@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Check, ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Clinic {
   id: string;
@@ -27,7 +28,8 @@ interface ClinicSelectorProps {
   clinics: Clinic[];
 }
 
-export function ClinicSelector({ clinics }: ClinicSelectorProps) {
+// Component that uses search params
+function ClinicSelectorContent({ clinics }: ClinicSelectorProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [open, setOpen] = useState(false);
@@ -42,29 +44,28 @@ export function ClinicSelector({ clinics }: ClinicSelectorProps) {
       if (clinic) {
         setValue(clinic.id);
       }
-    } else {
-      setValue('all');
     }
   }, [searchParams, clinics]);
   
-  const handleSelectClinic = (clinicId: string) => {
+  // Update URL when a clinic is selected
+  const handleClinicSelect = (clinicId: string) => {
+    // Ultra-fast store update first
     setValue(clinicId);
     setOpen(false);
     
-    // Update URL with the selected clinic
+    // Then update URL without full page reload
+    const params = new URLSearchParams(searchParams.toString());
     if (clinicId === 'all') {
-      // Remove clinicId from URL
-      const params = new URLSearchParams(searchParams.toString());
       params.delete('clinicId');
-      router.push(`/staff?${params.toString()}`);
     } else {
-      // Add clinicId to URL
-      const params = new URLSearchParams(searchParams.toString());
       params.set('clinicId', clinicId);
-      router.push(`/staff?${params.toString()}`);
     }
+    
+    // Navigate with the current pathname but updated query parameters
+    const pathname = window.location.pathname;
+    router.push(`${pathname}?${params.toString()}`);
   };
-  
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -72,38 +73,38 @@ export function ClinicSelector({ clinics }: ClinicSelectorProps) {
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full sm:w-64 justify-between"
+          className="w-full justify-between"
         >
-          {value === 'all' 
-            ? 'All Clinics' 
-            : clinics.find(clinic => clinic.id === value)?.name || "Select Clinic"}
+          {value
+            ? clinics.find((clinic) => clinic.id === value)?.name || "All Clinics"
+            : "All Clinics"}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full sm:w-64 p-0">
+      <PopoverContent className="w-full p-0">
         <Command>
           <CommandInput placeholder="Search clinic..." />
           <CommandEmpty>No clinic found.</CommandEmpty>
           <CommandGroup>
             <CommandItem
-              key="all"
               value="all"
-              onSelect={() => handleSelectClinic('all')}
+              onSelect={() => handleClinicSelect('all')}
               className="cursor-pointer"
             >
               <Check
                 className={cn(
                   "mr-2 h-4 w-4",
-                  value === 'all' ? "opacity-100" : "opacity-0"
+                  !value ? "opacity-100" : "opacity-0"
                 )}
               />
               All Clinics
             </CommandItem>
+            
             {clinics.map((clinic) => (
               <CommandItem
                 key={clinic.id}
                 value={clinic.id}
-                onSelect={() => handleSelectClinic(clinic.id)}
+                onSelect={() => handleClinicSelect(clinic.id)}
                 className="cursor-pointer"
               >
                 <Check
@@ -119,5 +120,16 @@ export function ClinicSelector({ clinics }: ClinicSelectorProps) {
         </Command>
       </PopoverContent>
     </Popover>
+  );
+}
+
+// Wrap in Suspense boundary for Next.js 15 optimization
+export function ClinicSelector(props: ClinicSelectorProps) {
+  return (
+    <Suspense fallback={
+      <Skeleton className="h-10 w-full rounded-md" />
+    }>
+      <ClinicSelectorContent {...props} />
+    </Suspense>
   );
 }

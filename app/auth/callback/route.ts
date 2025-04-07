@@ -15,10 +15,11 @@ export async function GET(request: Request) {
     await supabase.auth.exchangeCodeForSession(code);
   }
 
+  // After exchanging the code, redirect to our success page which handles client-side auth flow
   if (redirectTo) {
-    return NextResponse.redirect(`${origin}${redirectTo}`);
+    return NextResponse.redirect(`${origin}/auth/success?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
-  // URL to redirect to after sign up process completes
-  return NextResponse.redirect(`${origin}/protected`);
+  // URL to redirect to after sign up process completes - goes through success page first
+  return NextResponse.redirect(`${origin}/auth/success`);
 }

@@ -3,11 +3,15 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarIcon, UsersIcon, CreditCardIcon, PieChartIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useRouter } from "next/navigation";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
+import { Loader2 } from "lucide-react";
 
-export default function DashboardPage() {
+// Client component with search params
+function DashboardContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   
   // Ultra-fast authentication check for onboarding
@@ -253,3 +257,18 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+// Wrap the client component with search params in Suspense
+function DashboardPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center p-12">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    }>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+export default DashboardPage;

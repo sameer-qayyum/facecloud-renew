@@ -1,10 +1,12 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { NewStaffForm } from '../components/new-staff-form';
+import { Loader2 } from 'lucide-react';
 
-export default function AddEditStaffPage() {
+// Client component with search params
+function AddEditStaffContent() {
   const searchParams = useSearchParams();
   const staffId = searchParams.get('id');
   const isEditMode = !!staffId;
@@ -21,7 +23,7 @@ export default function AddEditStaffPage() {
       ? 'Edit Staff Member | FaceCloud' 
       : 'Add Staff Member | FaceCloud';
   }, [isEditMode]);
-  
+
   return (
     <div className="w-full px-2 sm:px-4 md:max-w-2xl mx-auto py-3 sm:py-4">
       <div className="mb-4">
@@ -37,5 +39,24 @@ export default function AddEditStaffPage() {
         <NewStaffForm />
       )}
     </div>
+  );
+}
+
+// Wrap the client component with search params in Suspense
+export default function AddEditStaffPage() {
+  return (
+    <Suspense fallback={
+      <div className="w-full px-2 sm:px-4 md:max-w-2xl mx-auto py-3 sm:py-4">
+        <div className="mb-4">
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Loading Staff Form</h1>
+          <p className="text-sm text-muted-foreground">Please wait while we prepare your form...</p>
+        </div>
+        <div className="flex items-center justify-center p-12">
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+      </div>
+    }>
+      <AddEditStaffContent />
+    </Suspense>
   );
 }

@@ -31,7 +31,7 @@ interface ClinicStore {
   setTimeframe: (timeframe: TimeFrame) => void;
   
   // Metrics data cache
-  metricsCache: Record<string, Record<TimeFrame, ClinicMetrics | null>>;
+  metricsCache: Record<string, Partial<Record<TimeFrame, ClinicMetrics | null>>>;
   setClinicMetrics: (clinicId: string, timeframe: TimeFrame, metrics: ClinicMetrics) => void;
   getClinicMetrics: (clinicId: string, timeframe: TimeFrame) => ClinicMetrics | null;
   invalidateMetrics: (clinicId?: string) => void;
