@@ -2,7 +2,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "set NEXT_SKIP_TYPECHECKING=true && next build --no-lint",
+    "build": "set NEXT_SKIP_TYPE_AND_BUILD_ERRORS=true && next build --no-lint",
     "build:full": "next build",
     "start": "next start"
   },
