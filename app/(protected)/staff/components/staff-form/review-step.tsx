@@ -6,6 +6,8 @@ import { StaffFormData, StaffRole } from '../new-staff-form';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { User, Mail, Phone, Building2, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { CalendarClock } from 'lucide-react';
 
 interface ReviewStepProps {
   formData: StaffFormData;
@@ -64,6 +66,16 @@ const getRoleBadgeClass = (role: StaffRole): string => {
 // Get initials for avatar fallback
 const getInitials = (firstName: string, lastName: string): string => {
   return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+};
+
+const dayNames = {
+  mon: 'Monday',
+  tue: 'Tuesday',
+  wed: 'Wednesday',
+  thu: 'Thursday',
+  fri: 'Friday',
+  sat: 'Saturday',
+  sun: 'Sunday'
 };
 
 export function ReviewStep({
@@ -159,6 +171,51 @@ export function ReviewStep({
             </div>
           </div>
         </div>
+        
+        {/* Staff Availability */}
+        <Card className="mt-6">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <CalendarClock className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold">Staff Availability</h3>
+            </div>
+            
+            {Object.entries(formData.availability).map(([day, dayData]) => {
+              const dayKey = day as keyof typeof dayNames;
+              const isAvailable = dayData.isAvailable;
+              
+              return (
+                <div key={day} className="py-2 border-b last:border-b-0">
+                  <div className="flex items-center">
+                    <span className="font-medium w-32">{dayNames[dayKey]}</span>
+                    {isAvailable ? (
+                      <div className="flex-1">
+                        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                          Available
+                        </Badge>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {dayData.slots?.map((slot, index) => (
+                            <Badge 
+                              key={index}
+                              variant="secondary" 
+                              className="text-xs"
+                            >
+                              {slot.startTime} - {slot.endTime}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <Badge variant="outline" className="bg-gray-50 text-gray-500 border-gray-200">
+                        Not Available
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
       </div>
       
       {/* Action Buttons */}

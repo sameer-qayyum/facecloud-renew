@@ -14,7 +14,7 @@ interface BasicInfoFormData {
   firstName: string;
   lastName: string;
   email: string;
-  phone: string;
+  phone?: string;
   ahpraNumber?: string;
   profilePicture?: File;
   profilePictureUrl?: string;

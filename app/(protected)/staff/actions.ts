@@ -17,9 +17,97 @@ const staffFormSchema = z.object({
   active: z.boolean().default(true),
   profilePicture: z.string().optional(),
   profilePictureBase64: z.string().optional(),
+  availability: z.object({
+    mon: z.object({
+      isAvailable: z.boolean(),
+      slots: z.array(z.object({
+        startTime: z.string(),
+        endTime: z.string()
+      })).optional()
+    }),
+    tue: z.object({
+      isAvailable: z.boolean(),
+      slots: z.array(z.object({
+        startTime: z.string(),
+        endTime: z.string()
+      })).optional()
+    }),
+    wed: z.object({
+      isAvailable: z.boolean(),
+      slots: z.array(z.object({
+        startTime: z.string(),
+        endTime: z.string()
+      })).optional()
+    }),
+    thu: z.object({
+      isAvailable: z.boolean(),
+      slots: z.array(z.object({
+        startTime: z.string(),
+        endTime: z.string()
+      })).optional()
+    }),
+    fri: z.object({
+      isAvailable: z.boolean(),
+      slots: z.array(z.object({
+        startTime: z.string(),
+        endTime: z.string()
+      })).optional()
+    }),
+    sat: z.object({
+      isAvailable: z.boolean(),
+      slots: z.array(z.object({
+        startTime: z.string(),
+        endTime: z.string()
+      })).optional()
+    }),
+    sun: z.object({
+      isAvailable: z.boolean(),
+      slots: z.array(z.object({
+        startTime: z.string(),
+        endTime: z.string()
+      })).optional()
+    })
+  }).optional()
 });
 
 export type StaffFormValues = z.infer<typeof staffFormSchema>;
+
+/**
+ * Process availability data for storage in the staff_assignments table
+ * Converts from form format to the compact format used in the database
+ */
+function processAvailabilityData(availability?: StaffFormValues['availability']) {
+  if (!availability) {
+    return {
+      mon: ['9-17'],
+      tue: ['9-17'],
+      wed: ['9-17'],
+      thu: ['9-17'],
+      fri: ['9-17'],
+      sat: ['9-17'],
+      sun: ['9-17']
+    };
+  }
+
+  const result: Record<string, string[]> = {};
+  
+  // For each day, process the slots if the day is available
+  Object.entries(availability).forEach(([day, dayData]) => {
+    if (dayData.isAvailable && dayData.slots && dayData.slots.length > 0) {
+      // Convert slots to the format "startHour-endHour"
+      result[day] = dayData.slots.map(slot => {
+        const startHour = slot.startTime.split(':')[0];
+        const endHour = slot.endTime.split(':')[0];
+        return `${startHour}-${endHour}`;
+      });
+    } else {
+      // Default to empty array if not available
+      result[day] = [];
+    }
+  });
+  
+  return result;
+}
 
 /**
  * Create a new staff member with support for the new staff assignments model
@@ -187,6 +275,7 @@ export async function createStaff(formData: StaffFormValues) {
           role: validatedData.role,
           primary_location: true, // First assignment is primary by default
           created_by: user.id,
+          staff_availability: processAvailabilityData(validatedData.availability)
         });
       
       if (assignmentError) {
@@ -307,6 +396,36 @@ export async function updateStaff(staffId: string, formData: StaffFormValues) {
       return { error: `Failed to update staff record: ${staffError.message}` };
     }
     
+    // Update staff assignment with availability data
+    if (validatedData.availability) {
+      // Get the staff assignment record
+      const { data: assignmentData, error: assignmentFetchError } = await supabase
+        .from('staff_assignments')
+        .select('id')
+        .eq('staff_id', staffId)
+        .maybeSingle();
+        
+      if (assignmentFetchError && assignmentFetchError.code !== 'PGRST116') {
+        return { error: `Failed to fetch staff assignment: ${assignmentFetchError.message}` };
+      }
+      
+      // If assignment exists, update it
+      if (assignmentData) {
+        const { error: assignmentUpdateError } = await supabase
+          .from('staff_assignments')
+          .update({
+            staff_availability: processAvailabilityData(validatedData.availability),
+            updated_at: new Date().toISOString(),
+            updated_by: user.id,
+          })
+          .eq('id', assignmentData.id);
+          
+        if (assignmentUpdateError) {
+          return { error: `Failed to update staff availability: ${assignmentUpdateError.message}` };
+        }
+      }
+    }
+    
     // Revalidate staff page to reflect the changes
     revalidatePath('/staff');
     
@@ -389,14 +508,15 @@ export async function getStaffById(staffId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   
   if (!user) {
-    return { error: 'Unauthorized. Please sign in to view staff members.' };
+    return { error: 'Unauthorized. Please sign in to view staff details.' };
   }
   
   try {
-    const { data: staffData, error } = await supabase
+    // Get the staff record with all related data in one efficient query
+    const { data: staffData, error: staffError } = await supabase
       .from('staff')
       .select(`
-        id, 
+        id,
         user_id,
         company_id,
         clinic_id,
@@ -406,6 +526,7 @@ export async function getStaffById(staffId: string) {
         created_at,
         updated_at,
         user_profiles:user_id(
+          id,
           first_name,
           last_name,
           email,
@@ -413,22 +534,30 @@ export async function getStaffById(staffId: string) {
           profile_picture
         ),
         clinics:clinic_id(
+          id,
           name
+        ),
+        staff_assignments(
+          id,
+          location_id,
+          role,
+          primary_location,
+          staff_availability
         )
       `)
       .eq('id', staffId)
       .single();
     
-    if (error) {
-      return { error: `Failed to fetch staff member: ${error.message}` };
+    if (staffError) {
+      return { error: 'Staff member not found' };
     }
     
     if (!staffData) {
       return { error: 'Staff member not found' };
     }
     
-    // Format the staff data
-    const formattedStaff = {
+    // Transform the nested data into a flattened structure for the client
+    const transformedData = {
       id: staffData.id,
       user_id: staffData.user_id,
       company_id: staffData.company_id,
@@ -438,15 +567,21 @@ export async function getStaffById(staffId: string) {
       active: staffData.active,
       created_at: staffData.created_at,
       updated_at: staffData.updated_at,
-      first_name: (staffData as any).user_profiles?.first_name || '',
-      last_name: (staffData as any).user_profiles?.last_name || '',
-      email: (staffData as any).user_profiles?.email || '',
-      phone: (staffData as any).user_profiles?.phone || '',
-      profile_picture: (staffData as any).user_profiles?.profile_picture || '',
-      clinic_name: (staffData as any).clinics?.name || 'No Clinic Assigned',
+      // Access user profile data with proper type handling
+      first_name: (staffData.user_profiles as any)?.first_name || '',
+      last_name: (staffData.user_profiles as any)?.last_name || '',
+      email: (staffData.user_profiles as any)?.email || '',
+      phone: (staffData.user_profiles as any)?.phone || '',
+      profile_picture: (staffData.user_profiles as any)?.profile_picture || '',
+      // Access clinic data with proper type handling
+      clinic_name: (staffData.clinics as any)?.name || '',
+      // Add staff availability if it exists in staff_assignments
+      staff_availability: staffData.staff_assignments && staffData.staff_assignments.length > 0 
+        ? staffData.staff_assignments[0]?.staff_availability 
+        : null
     };
     
-    return { data: formattedStaff, success: true };
+    return { data: transformedData };
   } catch (error) {
     return { error: 'Failed to fetch staff member. Please try again.' };
   }

@@ -1,62 +1,37 @@
-'use client';
+// Server Component for Add Staff page
+import { Suspense } from 'react';
+import { getCompanyClinics } from '../actions';
+import { Card } from '@/components/ui/card';
+import AddStaffContent from './add-staff-content';
 
-import { useSearchParams } from 'next/navigation';
-import { useState, useEffect, Suspense } from 'react';
-import { NewStaffForm } from '../components/new-staff-form';
-import { Loader2 } from 'lucide-react';
+export const metadata = {
+  title: 'Add Staff | FaceCloud',
+  description: 'Add a new staff member to your organization',
+};
 
-// Client component with search params
-function AddEditStaffContent() {
-  const searchParams = useSearchParams();
-  const staffId = searchParams.get('id');
-  const isEditMode = !!staffId;
+// This is a pure Server Component - can be async
+export default async function AddStaffPage() {
+  // Fetch clinic data directly - don't use unstable_cache since 
+  // the underlying function uses cookies which can't be cached
+  const clinicsResult = await getCompanyClinics();
+  const clinics = clinicsResult.data || [];
   
-  // Ultra-fast title switching without page reload
-  const pageTitle = isEditMode ? 'Edit Staff Member' : 'Add New Staff Member';
-  const pageDescription = isEditMode 
-    ? 'Edit staff member details and information'
-    : 'Add a new staff member to your team and configure their details';
-  
-  // Set the document title for browser tab (ultra-fast)
-  useEffect(() => {
-    document.title = isEditMode 
-      ? 'Edit Staff Member | FaceCloud' 
-      : 'Add Staff Member | FaceCloud';
-  }, [isEditMode]);
-
   return (
-    <div className="w-full px-2 sm:px-4 md:max-w-2xl mx-auto py-3 sm:py-4">
-      <div className="mb-4">
-        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">{pageTitle}</h1>
-        <p className="text-sm text-muted-foreground">
-          {pageDescription}
-        </p>
+    <div className="container mx-auto px-4 py-6 max-w-7xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Add New Staff</h1>
+        <p className="text-sm text-muted-foreground">Add a new staff member to your organization</p>
       </div>
       
-      {isEditMode ? (
-        <NewStaffForm staffId={staffId} />
-      ) : (
-        <NewStaffForm />
-      )}
+      <Suspense fallback={
+        <Card className="p-6">
+          <div className="flex justify-center items-center p-12">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary"></div>
+          </div>
+        </Card>
+      }>
+        <AddStaffContent initialClinics={clinics} />
+      </Suspense>
     </div>
-  );
-}
-
-// Wrap the client component with search params in Suspense
-export default function AddEditStaffPage() {
-  return (
-    <Suspense fallback={
-      <div className="w-full px-2 sm:px-4 md:max-w-2xl mx-auto py-3 sm:py-4">
-        <div className="mb-4">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Loading Staff Form</h1>
-          <p className="text-sm text-muted-foreground">Please wait while we prepare your form...</p>
-        </div>
-        <div className="flex items-center justify-center p-12">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </div>
-      </div>
-    }>
-      <AddEditStaffContent />
-    </Suspense>
   );
 }
