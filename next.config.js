@@ -29,8 +29,6 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: '2mb',
     },
-    // Fix client reference issues with special route groups
-    serverComponentsExternalPackages: [],
   },
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
