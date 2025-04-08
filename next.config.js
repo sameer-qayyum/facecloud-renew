@@ -40,21 +40,6 @@ const nextConfig = {
   compress: true,
   // This is critical for fixing the auth-layout issue
   output: 'standalone',
-  // Improve build time and reduce errors with route groups
-  webpack: (config) => {
-    config.module.rules.push({
-      test: /\.(js|jsx|ts|tsx)$/,
-      exclude: /node_modules/,
-      use: {
-        loader: 'babel-loader',
-        options: {
-          // These are the specific plugins that help with route groups and client components
-          plugins: ['@babel/plugin-transform-react-jsx']
-        }
-      }
-    });
-    return config;
-  }
 };
 
 module.exports = nextConfig;
