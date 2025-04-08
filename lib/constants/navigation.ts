@@ -37,6 +37,26 @@ export const mainNavItems: NavItem[] = [
     href: '/clinics',
     icon: Building2,
     roles: ['owner', 'manager'],
+    children: [
+      {
+        title: 'All Clinics',
+        href: '/clinics',
+        icon: Building2,
+        roles: ['owner', 'manager'],
+      },
+      {
+        title: 'Rooms',
+        href: '/rooms',
+        icon: Building2,
+        roles: ['owner', 'manager'],
+      },
+      {
+        title: 'Equipment',
+        href: '/equipment',
+        icon: PackageOpen,
+        roles: ['owner', 'manager'],
+      },
+    ],
   },
   {
     title: 'Appointments',
