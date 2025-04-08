@@ -2,7 +2,7 @@ import Link from "next/link";
 import DeployButton from "@/components/deploy-button";
 import { hasEnvVars } from "@/utils/supabase/check-env-vars";
 import { EnvVarWarning } from "@/components/env-var-warning";
-import HeaderAuth from "@/components/header-auth";
+import HeaderAuthClient from "@/components/header-auth-client";
 import ClientLayout from "./client-layout";
 
 export default function AuthLayout({
@@ -22,7 +22,7 @@ export default function AuthLayout({
                   <DeployButton />
                 </div>
               </div>
-              {!hasEnvVars ? <EnvVarWarning /> : <HeaderAuth />}
+              {!hasEnvVars ? <EnvVarWarning /> : <HeaderAuthClient />}
             </div>
           </nav>
           <div className="flex flex-col gap-20 max-w-5xl p-5">
