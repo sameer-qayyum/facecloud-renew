@@ -43,6 +43,7 @@ interface BaseSelectorProps {
   autoAssigned?: boolean;
   required?: boolean;
   urlParam?: boolean;
+  basePath?: string;
   className?: string;
 }
 
@@ -94,6 +95,7 @@ function SingleClinicSelector({
   autoAssigned = false,
   required = false,
   urlParam = false,
+  basePath,
   className
 }: SingleSelectProps) {
   const router = useRouter();
@@ -124,7 +126,9 @@ function SingleClinicSelector({
         params.set('clinic_id', newValue);
       }
       
-      const newPath = window.location.pathname + '?' + params.toString();
+      // Use basePath if provided, otherwise use current pathname
+      const path = basePath || window.location.pathname;
+      const newPath = params.toString() ? `${path}?${params.toString()}` : path;
       router.push(newPath);
     }
     

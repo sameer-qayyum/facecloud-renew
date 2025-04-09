@@ -287,3 +287,12 @@ CREATE POLICY "Staff can view rooms" ON rooms FOR SELECT
 USING (active = TRUE AND has_clinic_access(clinic_id));
 CREATE POLICY "Managers and owners can manage rooms" ON rooms FOR ALL
 USING (is_clinic_manager(clinic_id) OR is_clinic_owner(clinic_id));
+
+
+
+
+ALTER TABLE equipment ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Staff can view equipment" ON equipment FOR SELECT
+USING (active = TRUE AND has_clinic_access(clinic_id));
+CREATE POLICY "Managers and owners can manage equipment" ON equipment FOR ALL
+USING (is_clinic_manager(clinic_id) OR is_clinic_owner(clinic_id));
