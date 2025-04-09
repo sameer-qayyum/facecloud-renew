@@ -2,6 +2,7 @@ import { Geist } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import ThemeRegistry from "./theme/registry";
+import SessionProvider from "@/components/providers/session-provider";
 
 export const metadata = {
   title: "FaceCloud - Cosmetic Clinic Management",
@@ -27,16 +28,18 @@ export default function RootLayout({
   return (
     <html lang="en" className={geistSans.className} suppressHydrationWarning>
       <body suppressHydrationWarning className="bg-background text-foreground" style={{ background: '#fff' }}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <ThemeRegistry>
-            {children}
-          </ThemeRegistry>
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
+            <ThemeRegistry>
+              {children}
+            </ThemeRegistry>
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );
