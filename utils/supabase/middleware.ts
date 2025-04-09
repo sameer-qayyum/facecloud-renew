@@ -2,8 +2,6 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 
 export const updateSession = async (request: NextRequest) => {
-  // This `try/catch` block is only here for the interactive tutorial.
-  // Feel free to remove once you have Supabase connected.
   try {
     // Create an unmodified response
     let response = NextResponse.next({
@@ -18,41 +16,64 @@ export const updateSession = async (request: NextRequest) => {
       {
         cookies: {
           getAll() {
-            return request.cookies.getAll();
+            try {
+              return request.cookies.getAll();
+            } catch (error) {
+              console.error("Error accessing cookies in middleware:", error);
+              return [];
+            }
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value }) =>
-              request.cookies.set(name, value),
-            );
-            response = NextResponse.next({
-              request,
-            });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options),
-            );
+            try {
+              cookiesToSet.forEach(({ name, value, options }) => {
+                // Set cookies on the request
+                request.cookies.set(name, value);
+                
+                // Recreate the response to include new cookies
+                response = NextResponse.next({
+                  request: {
+                    headers: request.headers,
+                  },
+                });
+                
+                // Set cookies on the response with consistent options
+                response.cookies.set(name, value, {
+                  ...options,
+                  path: "/",
+                  sameSite: "lax",
+                  secure: process.env.NODE_ENV === "production"
+                });
+              });
+            } catch (error) {
+              console.error("Error setting cookies in middleware:", error);
+            }
           },
         },
+        auth: {
+          detectSessionInUrl: true,
+          persistSession: true,
+          autoRefreshToken: true
+        }
       },
     );
 
     // This will refresh session if expired - required for Server Components
     // https://supabase.com/docs/guides/auth/server-side/nextjs
-    const user = await supabase.auth.getUser();
+    await supabase.auth.getSession();
 
     // protected routes
-    if (request.nextUrl.pathname.startsWith("/protected") && user.error) {
+    if (request.nextUrl.pathname.startsWith("/protected") && !request.cookies.get('sb-auth-token')) {
       return NextResponse.redirect(new URL("/sign-in", request.url));
     }
 
-    if (request.nextUrl.pathname === "/" && !user.error) {
+    if (request.nextUrl.pathname === "/" && request.cookies.get('sb-auth-token')) {
       return NextResponse.redirect(new URL("/protected", request.url));
     }
 
     return response;
   } catch (e) {
-    // If you are here, a Supabase client could not be created!
-    // This is likely because you have not set up environment variables.
-    // Check out http://localhost:3000 for Next Steps.
+    // If an error is thrown, return the original request
+    console.error("Middleware error:", e);
     return NextResponse.next({
       request: {
         headers: request.headers,
