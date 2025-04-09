@@ -27,7 +27,8 @@ import {
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { MoreHorizontal, Search, FileEdit, Trash2 } from 'lucide-react';
+import { MoreHorizontal, Search, FileEdit, Trash2, XCircle, CheckCircle } from 'lucide-react';
+import { toggleRoomAvailability } from '../actions';
 
 interface RoomType {
   id: string;
@@ -38,6 +39,7 @@ interface RoomType {
 interface Clinic {
   id: string;
   name: string;
+  location_name?: string | null;
 }
 
 interface Room {
@@ -59,6 +61,7 @@ export function RoomsTable({ rooms: initialRooms }: RoomsTableProps) {
   const clinicFilter = searchParams.get('clinic_id');
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [isToggling, setIsToggling] = useState<string | null>(null);
   
   // Filter rooms based on clinic and search query
   const filteredRooms = initialRooms
@@ -71,6 +74,17 @@ export function RoomsTable({ rooms: initialRooms }: RoomsTableProps) {
   
   const handleEditRoom = (roomId: string) => {
     router.push(`/rooms/edit-room/${roomId}`);
+  };
+  
+  const handleToggleAvailability = async (roomId: string) => {
+    setIsToggling(roomId);
+    try {
+      await toggleRoomAvailability(roomId);
+    } catch (error) {
+      console.error('Error toggling room availability:', error);
+    } finally {
+      setIsToggling(null);
+    }
   };
   
   return (
@@ -102,13 +116,15 @@ export function RoomsTable({ rooms: initialRooms }: RoomsTableProps) {
               <TableHead>Room Name</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Clinic</TableHead>
+              <TableHead>Location</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredRooms.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="h-24 text-center">
+                <TableCell colSpan={6} className="h-24 text-center">
                   No rooms found.
                 </TableCell>
               </TableRow>
@@ -126,6 +142,12 @@ export function RoomsTable({ rooms: initialRooms }: RoomsTableProps) {
                     </Badge>
                   </TableCell>
                   <TableCell>{room.clinic.name}</TableCell>
+                  <TableCell>{room.clinic.location_name || "—"}</TableCell>
+                  <TableCell>
+                    <Badge variant={room.active ? "default" : "destructive"} className={room.active ? "bg-green-100 text-green-800 hover:bg-green-100" : ""}>
+                      {room.active ? "Available" : "Unavailable"}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -138,6 +160,22 @@ export function RoomsTable({ rooms: initialRooms }: RoomsTableProps) {
                         <DropdownMenuItem onClick={() => handleEditRoom(room.id)}>
                           <FileEdit className="mr-2 h-4 w-4" />
                           <span>Edit</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => handleToggleAvailability(room.id)}
+                          disabled={isToggling === room.id}
+                        >
+                          {room.active ? (
+                            <>
+                              <XCircle className="mr-2 h-4 w-4 text-amber-500" />
+                              <span>Mark Unavailable</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                              <span>Mark Available</span>
+                            </>
+                          )}
                         </DropdownMenuItem>
                         <DropdownMenuItem className="text-red-600">
                           <Trash2 className="mr-2 h-4 w-4" />

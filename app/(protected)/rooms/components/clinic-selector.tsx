@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label';
 interface Clinic {
   id: string;
   name: string;
+  location_name?: string | null;
 }
 
 interface ClinicSelectorProps {
@@ -51,7 +52,7 @@ export function ClinicSelector({ clinics }: ClinicSelectorProps) {
             <SelectItem value="all">All Clinics</SelectItem>
             {clinics.map((clinic) => (
               <SelectItem key={clinic.id} value={clinic.id}>
-                {clinic.name}
+                {clinic.name}{clinic.location_name ? ` - ${clinic.location_name}` : ''}
               </SelectItem>
             ))}
           </SelectContent>

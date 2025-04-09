@@ -3,6 +3,86 @@
 -- MVP: Service setup with templates, pricing, staff capabilities
 -- Includes: Tables, Indexes, RLS Policies, UDFs
 -- ============================================
+-- ========== 13. UDFS ==========
+CREATE OR REPLACE FUNCTION has_clinic_access(clinic UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM staff_assignments sa 
+    JOIN staff s ON sa.staff_id = s.id
+    JOIN locations l ON sa.location_id = l.id
+    WHERE s.user_id = auth.uid() 
+    AND l.clinic_id = clinic 
+    AND sa.active = TRUE
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION is_clinic_manager(clinic UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM staff_assignments sa 
+    JOIN staff s ON sa.staff_id = s.id
+    JOIN locations l ON sa.location_id = l.id
+    WHERE s.user_id = auth.uid() 
+    AND l.clinic_id = clinic 
+    AND sa.role = 'manager' 
+    AND sa.active = TRUE
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION is_clinic_owner(clinic UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM staff_assignments sa 
+    JOIN staff s ON sa.staff_id = s.id
+    JOIN locations l ON sa.location_id = l.id
+    WHERE s.user_id = auth.uid() 
+    AND l.clinic_id = clinic 
+    AND sa.role = 'owner' 
+    AND sa.active = TRUE
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION get_or_create_service_category(_clinic_id UUID, _name TEXT)
+RETURNS UUID AS $$
+DECLARE
+    normalized_name TEXT := TRIM(LOWER(_name));
+    cat_id UUID;
+BEGIN
+    SELECT id INTO cat_id FROM service_categories
+    WHERE clinic_id = _clinic_id AND LOWER(TRIM(name)) = normalized_name;
+
+    IF cat_id IS NULL THEN
+        INSERT INTO service_categories (clinic_id, name)
+        VALUES (_clinic_id, INITCAP(normalized_name)) RETURNING id INTO cat_id;
+    END IF;
+    RETURN cat_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION generate_default_room_name(clinic UUID, room_type UUID)
+RETURNS TEXT AS $$
+DECLARE
+    count_existing INTEGER;
+    type_name TEXT;
+BEGIN
+    SELECT COUNT(*) INTO count_existing FROM rooms
+    WHERE clinic_id = clinic AND room_type_id = room_type;
+    SELECT name INTO type_name FROM room_types WHERE id = room_type;
+    RETURN INITCAP(type_name) || ' Room ' || (count_existing + 1);
+END;
+$$ LANGUAGE plpgsql;
+
+
+
 
 -- ========== 1. SERVICE TEMPLATES ==========
 CREATE TABLE IF NOT EXISTS service_templates (
@@ -155,67 +235,6 @@ USING (active = TRUE AND has_clinic_access(clinic_id));
 CREATE POLICY "Managers and owners can manage categories" ON service_categories FOR ALL
 USING (is_clinic_manager(clinic_id) OR is_clinic_owner(clinic_id));
 
--- ========== 13. UDFS ==========
-CREATE OR REPLACE FUNCTION has_clinic_access(clinic UUID)
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM staff_assignments sa JOIN staff s ON sa.staff_id = s.id
-    WHERE s.user_id = auth.uid() AND sa.clinic_id = clinic AND sa.active = TRUE
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION is_clinic_manager(clinic UUID)
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM staff_assignments sa JOIN staff s ON sa.staff_id = s.id
-    WHERE s.user_id = auth.uid() AND sa.clinic_id = clinic AND sa.role = 'manager' AND sa.active = TRUE
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION is_clinic_owner(clinic UUID)
-RETURNS BOOLEAN AS $$
-BEGIN
-  RETURN EXISTS (
-    SELECT 1 FROM staff_assignments sa JOIN staff s ON sa.staff_id = s.id
-    WHERE s.user_id = auth.uid() AND sa.clinic_id = clinic AND sa.role = 'owner' AND sa.active = TRUE
-  );
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION get_or_create_service_category(_clinic_id UUID, _name TEXT)
-RETURNS UUID AS $$
-DECLARE
-    normalized_name TEXT := TRIM(LOWER(_name));
-    cat_id UUID;
-BEGIN
-    SELECT id INTO cat_id FROM service_categories
-    WHERE clinic_id = _clinic_id AND LOWER(TRIM(name)) = normalized_name;
-
-    IF cat_id IS NULL THEN
-        INSERT INTO service_categories (clinic_id, name)
-        VALUES (_clinic_id, INITCAP(normalized_name)) RETURNING id INTO cat_id;
-    END IF;
-    RETURN cat_id;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION generate_default_room_name(clinic UUID, room_type UUID)
-RETURNS TEXT AS $$
-DECLARE
-    count_existing INTEGER;
-    type_name TEXT;
-BEGIN
-    SELECT COUNT(*) INTO count_existing FROM rooms
-    WHERE clinic_id = clinic AND room_type_id = room_type;
-    SELECT name INTO type_name FROM room_types WHERE id = room_type;
-    RETURN INITCAP(type_name) || ' Room ' || (count_existing + 1);
-END;
-$$ LANGUAGE plpgsql;
-
 -- ========== 14. TRIGGERS ==========
 CREATE OR REPLACE FUNCTION set_updated_at()
 RETURNS TRIGGER AS $$
@@ -230,3 +249,41 @@ FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TRIGGER trg_staff_cap_updated_at BEFORE UPDATE ON staff_service_capabilities
 FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+CREATE OR REPLACE FUNCTION insert_default_room_types(clinic_id UUID)
+RETURNS VOID AS $$
+BEGIN
+  INSERT INTO room_types (clinic_id, name, description)
+  VALUES
+    (clinic_id, 'Injector', 'Used for injectables like Botox, filler'),
+    (clinic_id, 'Therapist', 'Used for facials, peels, skin treatments'),
+    (clinic_id, 'Laser', 'Used for laser treatments, IPL, etc.'),
+    (clinic_id, 'Consultation', 'Used for patient consultations')
+  ON CONFLICT DO NOTHING;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION after_insert_clinic_defaults()
+RETURNS TRIGGER AS $$
+BEGIN
+  PERFORM insert_default_room_types(NEW.id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_after_clinic_insert
+AFTER INSERT ON clinics
+FOR EACH ROW EXECUTE FUNCTION after_insert_clinic_defaults();
+
+ALTER TABLE room_types ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Staff can view active room types" ON room_types FOR SELECT
+USING (active = TRUE AND has_clinic_access(clinic_id));
+CREATE POLICY "Managers and owners can manage room types" ON room_types FOR ALL
+USING (is_clinic_manager(clinic_id) OR is_clinic_owner(clinic_id));
+
+ALTER TABLE rooms ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Staff can view rooms" ON rooms FOR SELECT
+USING (active = TRUE AND has_clinic_access(clinic_id));
+CREATE POLICY "Managers and owners can manage rooms" ON rooms FOR ALL
+USING (is_clinic_manager(clinic_id) OR is_clinic_owner(clinic_id));

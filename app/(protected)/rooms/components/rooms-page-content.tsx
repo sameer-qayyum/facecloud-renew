@@ -15,6 +15,7 @@ interface RoomType {
 interface Clinic {
   id: string;
   name: string;
+  location_name?: string | null;
 }
 
 // Our room interface for frontend use
@@ -70,12 +71,25 @@ export default async function RoomsPageContent() {
   
   try {
     // Fetch all clinics for this company for the clinic selector
-    const { data: clinics } = await supabase
+    const { data: clinicsRaw } = await supabase
       .from('clinics')
-      .select('id, name')
+      .select(`
+        id, 
+        name,
+        locations(id, name)
+      `)
       .eq('company_id', company_id)
       .eq('active', true)
       .order('name', { ascending: true });
+    
+    // Process clinics with location data for the selector
+    const clinics = clinicsRaw?.map(clinic => ({
+      id: clinic.id,
+      name: clinic.name,
+      location_name: clinic.locations && Array.isArray(clinic.locations) && clinic.locations.length > 0
+        ? clinic.locations[0].name
+        : null
+    })) || [];
     
     // First, get the basic rooms data
     const { data: roomsData, error } = await supabase
@@ -88,7 +102,6 @@ export default async function RoomsPageContent() {
         room_type_id,
         clinic_id
       `)
-      .eq('active', true)
       .order('name', { ascending: true });
     
     if (error) {
@@ -112,18 +125,31 @@ export default async function RoomsPageContent() {
       .select('id, name, description')
       .in('id', roomTypeIds);
       
-    // Get all clinic data we need
+    // Get all clinic data we need with location information
     const clinicIds = Array.from(new Set(roomsData.map(room => room.clinic_id)));
     const { data: clinicData } = await supabase
       .from('clinics')
-      .select('id, name')
+      .select(`
+        id, 
+        name,
+        locations(id, name)
+      `)
       .in('id', clinicIds);
+    
+    // Process clinics to include location name
+    const processedClinics = clinicData?.map(clinic => ({
+      id: clinic.id,
+      name: clinic.name,
+      location_name: clinic.locations && Array.isArray(clinic.locations) && clinic.locations.length > 0
+        ? clinic.locations[0].name
+        : null
+    })) || [];
     
     // Map room types and clinics to their respective rooms
     const rooms = roomsData.map(room => {
       // Find the matching room type and clinic
       const roomType = roomTypes?.find(rt => rt.id === room.room_type_id) || null;
-      const clinic = clinicData?.find(c => c.id === room.clinic_id) || null;
+      const clinic = processedClinics?.find(c => c.id === room.clinic_id) || null;
       
       return {
         ...room,
